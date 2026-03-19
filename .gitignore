@@ -21,7 +21,7 @@ wheels/
 *.egg
 
 # Virtual Environment
-venv/
+backend/venv/
 env/
 ENV/
 .venv
@@ -52,4 +52,8 @@ htmlcov/
 
 # Qdrant data
 qdrant_storage/
+
+#pdfs
+
+*.pdf
 

@@ -6,7 +6,7 @@ import re
 from loguru import logger
 
 
-class TextChunker:
+class Chunker:
     """Intelligent text chunking for research papers"""
     
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
@@ -91,25 +91,25 @@ class TextChunker:
     def chunk_text(self, text: str, metadata: Dict = None) -> List[Dict[str, any]]:
         """
         Main chunking method that creates semantic chunks
-        
+
         Args:
             text: Input text to chunk
             metadata: Optional metadata to attach to each chunk
-            
+
         Returns:
             List of chunk dictionaries with text and metadata
         """
         logger.info(f"Chunking text of length {len(text)}")
-        
+
         # Clean text
         text = self.clean_text(text)
-        
+
         # Detect sections
         sections = self.detect_sections(text)
-        
+
         chunks = []
         chunk_id = 0
-        
+
         if sections:
             # Chunk each section separately
             for section in sections:
@@ -120,6 +120,7 @@ class TextChunker:
                         'text': chunk_text,
                         'section': section['title'],
                         'char_count': len(chunk_text),
+                        'content_type': 'text',
                         'metadata': metadata or {}
                     })
                     chunk_id += 1
@@ -132,10 +133,93 @@ class TextChunker:
                     'text': chunk_text,
                     'section': 'unknown',
                     'char_count': len(chunk_text),
+                    'content_type': 'text',
                     'metadata': metadata or {}
                 })
                 chunk_id += 1
-        
-        logger.info(f"Created {len(chunks)} chunks")
+
+        logger.info(f"Created {len(chunks)} text chunks")
+        return chunks
+
+    def create_table_chunks(
+        self, tables: List[Dict], metadata: Dict = None, start_chunk_id: int = 0
+    ) -> List[Dict[str, any]]:
+        """
+        Create chunks from extracted tables.
+
+        Each table becomes a single chunk whose text is the Markdown (or CSV)
+        representation so it can be embedded and retrieved.
+
+        Args:
+            tables: List of table dicts from Docling (keys: index, html, csv, markdown)
+            metadata: Optional metadata to attach
+            start_chunk_id: Starting chunk_id to continue numbering
+
+        Returns:
+            List of chunk dictionaries with content_type='table'
+        """
+        chunks = []
+        chunk_id = start_chunk_id
+
+        for table in tables:
+            # Prefer markdown, fall back to csv, then html
+            table_text = (
+                table.get("markdown")
+                or table.get("csv")
+                or table.get("html", "")
+            )
+            if not table_text or not table_text.strip():
+                continue
+
+            chunks.append({
+                'chunk_id': chunk_id,
+                'text': f"[TABLE {table.get('index', chunk_id)}]\n{table_text}",
+                'section': 'table',
+                'char_count': len(table_text),
+                'content_type': 'table',
+                'table_html': table.get('html', ''),
+                'metadata': metadata or {},
+            })
+            chunk_id += 1
+
+        logger.info(f"Created {len(chunks)} table chunks")
+        return chunks
+
+    def create_image_chunks(
+        self, images: List[Dict], metadata: Dict = None, start_chunk_id: int = 0
+    ) -> List[Dict[str, any]]:
+        """
+        Create chunks from extracted images.
+
+        Each image becomes a chunk whose text is the caption (used for
+        embedding).  The base64 PNG data is stored in the chunk metadata so it
+        can be forwarded to a multimodal LLM later.
+
+        Args:
+            images: List of image dicts from Docling (keys: base64_png, caption)
+            metadata: Optional metadata to attach
+            start_chunk_id: Starting chunk_id to continue numbering
+
+        Returns:
+            List of chunk dictionaries with content_type='image'
+        """
+        chunks = []
+        chunk_id = start_chunk_id
+
+        for idx, img in enumerate(images):
+            caption = img.get("caption", "").strip() or f"Figure {idx + 1}"
+            # The text used for embedding is the caption / description
+            chunks.append({
+                'chunk_id': chunk_id,
+                'text': f"[FIGURE] {caption}",
+                'section': 'figure',
+                'char_count': len(caption),
+                'content_type': 'image',
+                'image_base64': img.get('base64_png', ''),
+                'metadata': metadata or {},
+            })
+            chunk_id += 1
+
+        logger.info(f"Created {len(chunks)} image chunks")
         return chunks
 

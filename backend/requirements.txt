@@ -7,13 +7,14 @@ python-multipart==0.0.6
 PyPDF2==3.0.1
 pdfplumber==0.10.3
 pypdf==3.17.4
+docling>=2.80.0
 
 # Vector Database
 qdrant-client==1.7.3
 
 # Embeddings and AI
 openai==1.12.0
-google-generativeai==0.3.2
+google-genai>=1.0.0
 sentence-transformers==2.3.1
 
 # Environment and Configuration

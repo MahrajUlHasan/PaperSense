@@ -7,7 +7,7 @@ import uuid
 from loguru import logger
 
 from services.pdf_parser import PDFParser
-from services.text_chunker import TextChunker
+from services.chunker import Chunker
 from services.embedding_service import EmbeddingService
 from services.vector_store import VectorStore
 from services.llm_service import LLMService
@@ -19,7 +19,7 @@ class RAGPipeline:
     
     def __init__(self):
         self.pdf_parser = PDFParser()
-        self.text_chunker = TextChunker(
+        self.text_chunker = Chunker(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap
         )
@@ -57,36 +57,56 @@ class RAGPipeline:
             
             # Step 2: Chunk text
             logger.info("Step 2: Chunking text")
+            doc_metadata = {
+                "filename": filename,
+                "title": parsed_data['metadata'].get('title', 'Unknown'),
+                "author": parsed_data['metadata'].get('author', 'Unknown'),
+                "page_count": parsed_data['page_count']
+            }
+
             chunks = self.text_chunker.chunk_text(
                 parsed_data['text'],
-                metadata={
-                    "filename": filename,
-                    "title": parsed_data['metadata'].get('title', 'Unknown'),
-                    "author": parsed_data['metadata'].get('author', 'Unknown'),
-                    "page_count": parsed_data['page_count']
-                }
+                metadata=doc_metadata,
             )
-            
+
+            # Step 2b: Create table chunks
+            tables = parsed_data.get('tables', [])
+            table_chunks = self.text_chunker.create_table_chunks(
+                tables,
+                metadata=doc_metadata,
+                start_chunk_id=len(chunks),
+            )
+            chunks.extend(table_chunks)
+
+            # Step 2c: Create image chunks
+            images = parsed_data.get('images', [])
+            image_chunks = self.text_chunker.create_image_chunks(
+                images,
+                metadata=doc_metadata,
+                start_chunk_id=len(chunks),
+            )
+            chunks.extend(image_chunks)
+
             if not chunks:
                 return {
                     "success": False,
                     "error": "Failed to create chunks"
                 }
-            
+
             # Step 3: Generate embeddings
             logger.info("Step 3: Generating embeddings")
             chunks_with_embeddings = self.embedding_service.embed_chunks(chunks)
-            
+
             # Step 4: Store in vector database
             logger.info("Step 4: Storing in vector database")
             success = self.vector_store.add_documents(chunks_with_embeddings, document_id)
-            
+
             if not success:
                 return {
                     "success": False,
                     "error": "Failed to store in vector database"
                 }
-            
+
             # Return success with statistics
             return {
                 "success": True,
@@ -96,7 +116,9 @@ class RAGPipeline:
                 "statistics": {
                     "page_count": parsed_data['page_count'],
                     "char_count": parsed_data['char_count'],
-                    "chunk_count": len(chunks)
+                    "chunk_count": len(chunks),
+                    "table_count": len(table_chunks),
+                    "image_count": len(image_chunks),
                 }
             }
             
@@ -196,8 +218,23 @@ class RAGPipeline:
                     "error": "Document not found"
                 }
 
-            # Combine text from chunks
-            full_text = " ".join([chunk['text'] for chunk in all_chunks[:20]])  # Use first 20 chunks
+            # Separate chunks by content type
+            text_chunks = [c for c in all_chunks if c.get('content_type', 'text') == 'text']
+            table_chunks = [c for c in all_chunks if c.get('content_type') == 'table']
+            image_chunks = [c for c in all_chunks if c.get('content_type') == 'image']
+
+            # Combine text from chunks (use first 20 text chunks)
+            full_text = " ".join([chunk['text'] for chunk in text_chunks[:20]])
+
+            # Append table data to context so the LLM can reference it
+            if table_chunks:
+                table_text = "\n\n".join([c['text'] for c in table_chunks[:10]])
+                full_text += f"\n\n--- TABLES FOUND IN THE PAPER ---\n{table_text}"
+
+            # Append image/figure captions
+            if image_chunks:
+                fig_text = "\n".join([c['text'] for c in image_chunks[:10]])
+                full_text += f"\n\n--- FIGURES/IMAGES IN THE PAPER ---\n{fig_text}"
 
             # Generate various analyses
             logger.info("Generating summary")

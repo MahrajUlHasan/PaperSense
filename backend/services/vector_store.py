@@ -1,11 +1,12 @@
 """
 Qdrant vector store service for storing and retrieving embeddings
+Updated to use the latest qdrant-client API (query_points)
 """
 from typing import List, Dict, Optional
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 from qdrant_client.models import (
-    Distance, VectorParams, PointStruct, 
-    Filter, FieldCondition, MatchValue, SearchParams
+    Distance, VectorParams, PointStruct,
+    Filter, FieldCondition, MatchValue
 )
 from loguru import logger
 from config import settings
@@ -36,11 +37,11 @@ class VectorStore:
         self._ensure_collection()
     
     def _ensure_collection(self):
-        """Create collection if it doesn't exist"""
+        """Create collection if it doesn't exist, and ensure payload indexes"""
         try:
             collections = self.client.get_collections().collections
             collection_names = [col.name for col in collections]
-            
+
             if self.collection_name not in collection_names:
                 logger.info(f"Creating collection: {self.collection_name}")
                 self.client.create_collection(
@@ -53,6 +54,20 @@ class VectorStore:
                 logger.info("Collection created successfully")
             else:
                 logger.info(f"Collection {self.collection_name} already exists")
+
+            # Create payload indexes so filtered queries work
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="document_id",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="content_type",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+            logger.info("Payload indexes on 'document_id' and 'content_type' ensured")
+
         except Exception as e:
             logger.error(f"Error ensuring collection: {e}")
             raise
@@ -74,14 +89,22 @@ class VectorStore:
             for chunk in chunks:
                 point_id = str(uuid.uuid4())
                 
+                content_type = chunk.get('content_type', 'text')
                 payload = {
                     "document_id": document_id,
                     "chunk_id": chunk.get('chunk_id', 0),
                     "text": chunk['text'],
                     "section": chunk.get('section', 'unknown'),
                     "char_count": chunk.get('char_count', 0),
+                    "content_type": content_type,
                     "metadata": chunk.get('metadata', {})
                 }
+                # Store table HTML for rich rendering
+                if content_type == 'table' and chunk.get('table_html'):
+                    payload["table_html"] = chunk['table_html']
+                # Store image base64 for multimodal LLM usage
+                if content_type == 'image' and chunk.get('image_base64'):
+                    payload["image_base64"] = chunk['image_base64']
                 
                 point = PointStruct(
                     id=point_id,
@@ -104,21 +127,21 @@ class VectorStore:
             return False
     
     def search(
-        self, 
-        query_vector: List[float], 
+        self,
+        query_vector: List[float],
         top_k: int = 5,
         document_id: Optional[str] = None,
         score_threshold: Optional[float] = None
     ) -> List[Dict[str, any]]:
         """
-        Search for similar chunks
-        
+        Search for similar chunks using query_points (latest Qdrant API)
+
         Args:
             query_vector: Query embedding vector
             top_k: Number of results to return
             document_id: Optional filter by document ID
             score_threshold: Minimum similarity score
-            
+
         Returns:
             List of search results with text and metadata
         """
@@ -134,28 +157,42 @@ class VectorStore:
                         )
                     ]
                 )
-            
-            # Perform search
-            results = self.client.search(
+
+            # Perform search using query_points (replaces deprecated client.search)
+            response = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=top_k,
+                query=query_vector,
                 query_filter=search_filter,
-                score_threshold=score_threshold
+                limit=top_k,
+                score_threshold=score_threshold,
+                with_payload=True,
             )
 
-            # Format results
+            # Format results — query_points returns a QueryResponse with .points
             formatted_results = []
-            for result in results:
-                formatted_results.append({
-                    "id": result.id,
-                    "score": result.score,
-                    "text": result.payload.get("text", ""),
-                    "section": result.payload.get("section", ""),
-                    "document_id": result.payload.get("document_id", ""),
-                    "chunk_id": result.payload.get("chunk_id", 0),
-                    "metadata": result.payload.get("metadata", {})
-                })
+            for point in response.points:
+                result = {
+                    "id": point.id,
+                    "score": point.score,
+                    "text": point.payload.get("text", ""),
+                    "section": point.payload.get("section", ""),
+                    "document_id": point.payload.get("document_id", ""),
+                    "chunk_id": point.payload.get("chunk_id", 0),
+                    "content_type": point.payload.get("content_type", "text"),
+                    "metadata": point.payload.get("metadata", {})
+                }
+                # Include rich table/image data when present
+                if point.payload.get("table_html"):
+                    result["table_html"] = point.payload["table_html"]
+                if point.payload.get("image_base64"):
+                    result["image_base64"] = point.payload["image_base64"]
+                formatted_results.append(result)
+
+                # Log the payload in a nicely formatted JSON form
+                try:
+                    logger.debug("Point payload:\n" + json.dumps(point.payload, indent=2, ensure_ascii=False))
+                except Exception:
+                    logger.debug(f"Point payload (non-serializable): {point.payload}")
 
             logger.info(f"Found {len(formatted_results)} results")
             return formatted_results
@@ -169,13 +206,15 @@ class VectorStore:
         try:
             self.client.delete(
                 collection_name=self.collection_name,
-                points_selector=Filter(
-                    must=[
-                        FieldCondition(
-                            key="document_id",
-                            match=MatchValue(value=document_id)
-                        )
-                    ]
+                points_selector=models.FilterSelector(
+                    filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="document_id",
+                                match=MatchValue(value=document_id)
+                            )
+                        ]
+                    )
                 )
             )
             logger.info(f"Deleted document {document_id}")

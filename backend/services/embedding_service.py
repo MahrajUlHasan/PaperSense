@@ -93,3 +93,7 @@ class EmbeddingService:
         
         return chunks
 
+
+
+########################## LANGCHAIN EMBEDDING ######################################
+#todo: implement langchain embedding under here

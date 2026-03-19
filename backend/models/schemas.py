@@ -17,7 +17,7 @@ class DocumentUploadResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     """Request for querying the knowledge base"""
-    question: str = Field(..., description="Question to ask")
+    question: str = Field(..., description="what is the topic of this paper and is it relevent to genAI")
     document_id: Optional[str] = Field(None, description="Specific document to search")
     top_k: Optional[int] = Field(5, description="Number of chunks to retrieve")
 

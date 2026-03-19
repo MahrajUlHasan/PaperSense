@@ -43,7 +43,7 @@ def test_query(question: str, document_id: str = None):
     print("\n=== Testing Query Endpoint ===")
     
     payload = {
-        "question": question,
+        "question": "what is the topic of the paper and is it relevent to genAI",
         "top_k": 5
     }
     

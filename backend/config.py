@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     
     # Vector Search Configuration
     top_k_results: int = Field(default=5, env="TOP_K_RESULTS")
-    similarity_threshold: float = Field(default=0.7, env="SIMILARITY_THRESHOLD")
+    similarity_threshold: float = Field(default=0.3, env="SIMILARITY_THRESHOLD")
     
     class Config:
         env_file = ".env"
