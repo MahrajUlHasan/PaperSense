@@ -26,6 +26,21 @@ class Settings(BaseSettings):
     
     # Model Configuration
     embedding_model: str = Field(default="text-embedding-3-small", env="EMBEDDING_MODEL")
+    embedding_provider: str = Field(
+        default="openai",
+        env="EMBEDDING_PROVIDER",
+        description="Embedding provider: openai | langchain | gemma"
+    )
+    gemma_embedding_model: str = Field(
+        default="models/text-embedding-004",
+        env="GEMMA_EMBEDDING_MODEL",
+        description="Google GenAI / LangChain embedding model name"
+    )
+    embedding_dimension: int = Field(
+        default=1536,
+        env="EMBEDDING_DIMENSION",
+        description="Dimension of embedding vectors (1536 for OpenAI, 768 for Gemma/LangChain)"
+    )
     gemini_model: str = Field(default="gemini-pro", env="GEMINI_MODEL")
     chunk_size: int = Field(default=1000, env="CHUNK_SIZE")
     chunk_overlap: int = Field(default=200, env="CHUNK_OVERLAP")

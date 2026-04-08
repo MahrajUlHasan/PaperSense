@@ -10,7 +10,8 @@ from config import settings
 from services.rag_pipeline import RAGPipeline
 from models.schemas import (
     DocumentUploadResponse, QueryRequest, QueryResponse,
-    AnalysisResponse, DeleteResponse, StatsResponse, HealthResponse
+    AnalysisResponse, DeleteResponse, StatsResponse, HealthResponse,
+    EmbeddingConfigRequest, EmbeddingConfigResponse
 )
 
 # Configure logging
@@ -40,32 +41,29 @@ rag_pipeline = RAGPipeline()
 logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
 
-@app.get("/", response_model=HealthResponse)
-async def root():
-    """Root endpoint - health check"""
+def _health_payload() -> dict:
+    emb_info = rag_pipeline.get_embedding_info()
     return {
         "status": "healthy",
         "version": settings.app_version,
         "services": {
             "vector_store": "qdrant",
-            "embeddings": "openai",
+            "embeddings": emb_info["provider"],
             "llm": "gemini"
         }
     }
+
+
+@app.get("/", response_model=HealthResponse)
+async def root():
+    """Root endpoint - health check"""
+    return _health_payload()
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "version": settings.app_version,
-        "services": {
-            "vector_store": "qdrant",
-            "embeddings": "openai",
-            "llm": "gemini"
-        }
-    }
+    return _health_payload()
 
 
 @app.post("/upload", response_model=DocumentUploadResponse)
@@ -192,6 +190,54 @@ async def get_statistics():
 
     except Exception as e:
         logger.error(f"Stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/embedding", response_model=EmbeddingConfigResponse)
+async def get_embedding_config():
+    """
+    Get the current embedding provider configuration.
+
+    Returns:
+        Current provider, model name, dimension, and list of available providers.
+    """
+    try:
+        info = rag_pipeline.get_embedding_info()
+        return {"success": True, **info}
+    except Exception as e:
+        logger.error(f"Embedding config error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/embedding", response_model=EmbeddingConfigResponse)
+async def set_embedding_config(request: EmbeddingConfigRequest):
+    """
+    Switch the active embedding provider at runtime.
+
+    **Providers:**
+    - `openai`    – OpenAI text-embedding-3-small (1536-d)
+    - `langchain` – LangChain + Google Generative AI text-embedding-004 (768-d)
+    - `gemma`     – Google GenAI text-embedding-004 (768-d, multimodal image support)
+
+    > **Note:** Switching providers changes the embedding dimension.
+    > Documents embedded with one provider cannot be searched with another.
+    """
+    valid = {"openai", "langchain", "gemma"}
+    if request.provider.lower() not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid provider '{request.provider}'. Must be one of: {', '.join(sorted(valid))}"
+        )
+    try:
+        result = rag_pipeline.set_embedding_service(request.provider)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to switch provider"))
+        info = rag_pipeline.get_embedding_info()
+        return {"success": True, **info}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Embedding switch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

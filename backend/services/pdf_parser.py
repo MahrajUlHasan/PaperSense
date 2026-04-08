@@ -50,9 +50,10 @@ class PDFParser:
         if self._docling_converter is None:
             pipeline_options = PdfPipelineOptions()
             pipeline_options.do_table_structure = True
-            pipeline_options.generate_picture_images = True
-            pipeline_options.generate_page_images = False  # not needed for RAG
-            pipeline_options.images_scale = 2.0
+            pipeline_options.generate_picture_images = False  # skip heavy image generation todo:turn on if there is enough ram
+            pipeline_options.generate_page_images = False     # not needed for RAG
+            pipeline_options.images_scale = 1.0               # lower resolution to save memory
+            pipeline_options.do_ocr = False                   # skip OCR for born-digital PDFs
 
             self._docling_converter = DocumentConverter(
                 format_options={
@@ -103,20 +104,22 @@ class PDFParser:
                 table_data["markdown"] = ""
             tables.append(table_data)
 
-        # --- Images / Figures ---
+        # --- Images / Figures (captions only; actual images skipped to save memory) ---
         images: List[Dict[str, str]] = []
         for element, _level in doc.iterate_items():
             if isinstance(element, PictureItem):
                 try:
+                    caption = getattr(element, "caption", "") or ""
+                    entry: Dict[str, str] = {"caption": caption}
+                    # Only encode image bytes when picture generation is enabled
                     pil_image = element.get_image(doc)
                     if pil_image is not None:
                         img_buffer = io.BytesIO()
                         pil_image.save(img_buffer, format="PNG")
-                        img_b64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
-                        images.append({
-                            "base64_png": img_b64,
-                            "caption": getattr(element, "caption", "") or "",
-                        })
+                        entry["base64_png"] = base64.b64encode(
+                            img_buffer.getvalue()
+                        ).decode("utf-8")
+                    images.append(entry)
                 except Exception as img_err:
                     logger.warning(f"Could not extract image: {img_err}")
 

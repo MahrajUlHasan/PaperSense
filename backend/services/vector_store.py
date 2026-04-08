@@ -31,7 +31,7 @@ class VectorStore:
             )
         
         self.collection_name = settings.qdrant_collection_name
-        self.embedding_dimension = 1536  # OpenAI text-embedding-3-small
+        self.embedding_dimension = settings.embedding_dimension
         
         # Create collection if it doesn't exist
         self._ensure_collection()
@@ -72,6 +72,35 @@ class VectorStore:
             logger.error(f"Error ensuring collection: {e}")
             raise
     
+    def recreate_collection(self, new_dimension: int) -> None:
+        """
+        Drop the existing collection and create a fresh one with the given
+        vector dimension.  All previously stored vectors are lost.
+
+        Args:
+            new_dimension: Size of the new embedding vectors.
+        """
+        try:
+            logger.warning(
+                f"Recreating collection '{self.collection_name}' "
+                f"(old dim={self.embedding_dimension}, new dim={new_dimension})"
+            )
+            # Delete the old collection if it exists
+            collections = self.client.get_collections().collections
+            if any(c.name == self.collection_name for c in collections):
+                self.client.delete_collection(self.collection_name)
+                logger.info(f"Deleted old collection '{self.collection_name}'")
+
+            # Update dimension and recreate
+            self.embedding_dimension = new_dimension
+            self._ensure_collection()
+            logger.info(
+                f"Collection '{self.collection_name}' recreated with dimension {new_dimension}"
+            )
+        except Exception as e:
+            logger.error(f"Error recreating collection: {e}")
+            raise
+
     def add_documents(self, chunks: List[Dict[str, any]], document_id: str) -> bool:
         """
         Add document chunks to vector store
@@ -201,6 +230,64 @@ class VectorStore:
             logger.error(f"Search error: {e}")
             return []
 
+    def get_by_document_id(self, document_id: str, limit: int = 1000) -> List[Dict[str, any]]:
+        """
+        Retrieve all chunks for a specific document using scroll (no query vector needed).
+
+        Args:
+            document_id: The document to retrieve chunks for
+            limit: Maximum number of chunks to return
+
+        Returns:
+            List of chunk dicts with text, metadata, etc.
+        """
+        try:
+            doc_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id)
+                    )
+                ]
+            )
+
+            results = []
+            offset = None
+            while True:
+                points, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=doc_filter,
+                    limit=min(limit - len(results), 100),
+                    with_payload=True,
+                    offset=offset,
+                )
+                for point in points:
+                    result = {
+                        "id": point.id,
+                        "text": point.payload.get("text", ""),
+                        "section": point.payload.get("section", ""),
+                        "document_id": point.payload.get("document_id", ""),
+                        "chunk_id": point.payload.get("chunk_id", 0),
+                        "content_type": point.payload.get("content_type", "text"),
+                        "metadata": point.payload.get("metadata", {}),
+                    }
+                    if point.payload.get("table_data"):
+                        result["table_data"] = point.payload["table_data"]
+                    if point.payload.get("image_data"):
+                        result["image_data"] = point.payload["image_data"]
+                    results.append(result)
+
+                if next_offset is None or len(results) >= limit:
+                    break
+                offset = next_offset
+
+            logger.info(f"Retrieved {len(results)} chunks for document {document_id}")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error retrieving document chunks: {e}")
+            return []
+
     def delete_document(self, document_id: str) -> bool:
         """Delete all chunks for a document"""
         try:
@@ -229,7 +316,7 @@ class VectorStore:
             info = self.client.get_collection(self.collection_name)
             return {
                 "name": self.collection_name,
-                "vectors_count": info.vectors_count,
+                "vectors_count": info.indexed_vectors_count,
                 "points_count": info.points_count,
                 "status": info.status
             }

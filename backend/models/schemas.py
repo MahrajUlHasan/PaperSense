@@ -72,3 +72,21 @@ class HealthResponse(BaseModel):
     version: str
     services: Dict[str, str]
 
+
+class EmbeddingConfigRequest(BaseModel):
+    """Request to change the embedding provider"""
+    provider: str = Field(
+        ...,
+        description="Embedding provider to use: 'openai', 'langchain', or 'gemma'"
+    )
+
+
+class EmbeddingConfigResponse(BaseModel):
+    """Response after changing or querying the embedding config"""
+    success: bool
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    dimension: Optional[int] = None
+    available_providers: Optional[List[str]] = None
+    error: Optional[str] = None
+

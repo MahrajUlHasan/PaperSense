@@ -8,7 +8,7 @@ from loguru import logger
 
 from services.pdf_parser import PDFParser
 from services.chunker import Chunker
-from services.embedding_service import EmbeddingService
+from services.embedding_service import get_embedding_service, EMBEDDING_DIMENSIONS
 from services.vector_store import VectorStore
 from services.llm_service import LLMService
 from config import settings
@@ -23,12 +23,70 @@ class RAGPipeline:
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap
         )
-        self.embedding_service = EmbeddingService()
+        self.embedding_service = get_embedding_service()
         self.vector_store = VectorStore()
         self.llm_service = LLMService()
         
         logger.info("RAG Pipeline initialized")
-    
+
+    def set_embedding_service(self, provider: str) -> Dict[str, any]:
+        """
+        Switch the active embedding provider at runtime.
+
+        If the new provider uses a different vector dimension the Qdrant
+        collection is automatically dropped and recreated so that the
+        stored vectors stay consistent with the active embeddings.
+
+        Args:
+            provider: One of 'openai', 'langchain', 'gemma'
+
+        Returns:
+            Dict with success status, provider name, model, and dimension
+        """
+        try:
+            new_service = get_embedding_service(provider)
+            old_dimension = self.embedding_service.embedding_dimension
+            new_dimension = new_service.embedding_dimension
+
+            self.embedding_service = new_service
+
+            # Recreate the Qdrant collection when the dimension changes
+            if new_dimension != old_dimension:
+                logger.warning(
+                    f"Embedding dimension changed ({old_dimension} → {new_dimension}). "
+                    "Recreating Qdrant collection – all existing vectors will be removed."
+                )
+                self.vector_store.recreate_collection(new_dimension)
+
+            provider_lower = provider.lower()
+            return {
+                "success": True,
+                "provider": provider_lower,
+                "model": getattr(new_service, "model", None)
+                         or getattr(new_service, "model_name", "unknown"),
+                "dimension": new_dimension,
+            }
+        except Exception as e:
+            logger.error(f"Failed to switch embedding provider: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_embedding_info(self) -> Dict[str, any]:
+        """Return information about the currently active embedding service."""
+        svc = self.embedding_service
+        cls_name = type(svc).__name__
+        provider_map = {
+            "EmbeddingService": "openai",
+            "LangChainEmbeddingService": "langchain",
+            "GemmaEmbeddingService": "gemma",
+        }
+        return {
+            "provider": provider_map.get(cls_name, cls_name),
+            "model": getattr(svc, "model", None)
+                     or getattr(svc, "model_name", "unknown"),
+            "dimension": svc.embedding_dimension,
+            "available_providers": list(EMBEDDING_DIMENSIONS.keys()),
+        }
+
     def process_document(self, pdf_file: bytes, filename: str) -> Dict[str, any]:
         """
         Process a PDF document through the entire pipeline
@@ -202,15 +260,8 @@ class RAGPipeline:
         try:
             logger.info(f"Analyzing document {document_id}")
 
-            # Retrieve all chunks for the document
-            # Use a dummy query vector to get all chunks (search with high top_k)
-            dummy_embedding = [0.0] * 1536
-            all_chunks = self.vector_store.search(
-                query_vector=dummy_embedding,
-                top_k=1000,  # Get many chunks
-                document_id=document_id,
-                score_threshold=0.0  # No threshold
-            )
+            # Retrieve all chunks for the document using scroll (no dummy vector needed)
+            all_chunks = self.vector_store.get_by_document_id(document_id)
 
             if not all_chunks:
                 return {
