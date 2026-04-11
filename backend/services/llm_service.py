@@ -1,6 +1,5 @@
 """
 LLM service using Google Gemini API for text generation
-Updated to use the latest google.genai library
 """
 from typing import List, Dict, Optional
 from google import genai
@@ -157,7 +156,7 @@ Context from research papers:
 Question: {question}
 
 Instructions:
-1. Provide a clear, accurate answer based on the context
+1. Provide a clear, accurate answer based on the context, do not include thinking process or question reformulation.
 2. Cite specific sources using [1], [2], etc.
 3. When tables are relevant, reference and summarize the tabular data
 4. When figures are relevant, mention them by their captions
