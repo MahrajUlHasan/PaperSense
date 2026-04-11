@@ -16,7 +16,7 @@ from config import settings
 
 class RAGPipeline:
     """Main RAG pipeline orchestrating all services"""
-    
+
     def __init__(self):
         self.pdf_parser = PDFParser()
         self.text_chunker = Chunker(
@@ -26,7 +26,7 @@ class RAGPipeline:
         self.embedding_service = get_embedding_service()
         self.vector_store = VectorStore()
         self.llm_service = LLMService()
-        
+
         logger.info("RAG Pipeline initialized")
 
     def set_embedding_service(self, provider: str) -> Dict[str, any]:
@@ -90,11 +90,11 @@ class RAGPipeline:
     def process_document(self, pdf_file: bytes, filename: str) -> Dict[str, any]:
         """
         Process a PDF document through the entire pipeline
-        
+
         Args:
             pdf_file: PDF file as bytes
             filename: Original filename
-            
+
         Returns:
             Processing result with document_id and statistics
         """
@@ -102,17 +102,17 @@ class RAGPipeline:
             # Generate unique document ID
             document_id = str(uuid.uuid4())
             logger.info(f"Processing document {filename} with ID {document_id}")
-            
+
             # Step 1: Parse PDF
             logger.info("Step 1: Parsing PDF")
             parsed_data = self.pdf_parser.parse_pdf(pdf_file, filename)
-            
+
             if not parsed_data['text']:
                 return {
                     "success": False,
                     "error": "Failed to extract text from PDF"
                 }
-            
+
             # Step 2: Chunk text
             logger.info("Step 2: Chunking text")
             doc_metadata = {
@@ -179,41 +179,41 @@ class RAGPipeline:
                     "image_count": len(image_chunks),
                 }
             }
-            
+
         except Exception as e:
             logger.error(f"Document processing error: {e}")
             return {
                 "success": False,
                 "error": str(e)
             }
-    
+
     def query(
-        self, 
-        question: str, 
+        self,
+        question: str,
         document_id: Optional[str] = None,
         top_k: int = None
     ) -> Dict[str, any]:
         """
         Query the knowledge base with a question
-        
+
         Args:
             question: User's question
             document_id: Optional specific document to search
             top_k: Number of chunks to retrieve
-            
+
         Returns:
             Answer with citations and context
         """
         try:
             if top_k is None:
                 top_k = settings.top_k_results
-            
+
             logger.info(f"Processing query: {question}")
-            
+
             # Step 1: Generate query embedding
             logger.info("Step 1: Generating query embedding")
             query_embedding = self.embedding_service.generate_embedding(question)
-            
+
             # Step 2: Retrieve relevant chunks
             logger.info("Step 2: Retrieving relevant chunks")
             retrieved_chunks = self.vector_store.search(
@@ -222,7 +222,7 @@ class RAGPipeline:
                 document_id=document_id,
                 score_threshold=settings.similarity_threshold
             )
-            
+
             if not retrieved_chunks:
                 return {
                     "success": False,
@@ -230,16 +230,16 @@ class RAGPipeline:
                     "citations": [],
                     "context_used": 0
                 }
-            
+
             # Step 3: Generate answer using LLM
             logger.info("Step 3: Generating answer")
             result = self.llm_service.answer_question(question, retrieved_chunks)
-            
+
             result["success"] = True
             result["question"] = question
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Query error: {e}")
             return {
@@ -346,3 +346,71 @@ class RAGPipeline:
                 "success": False,
                 "error": str(e)
             }
+
+
+    # ── Research context ──────────────────────────────────────────
+
+    def set_research(self, topic: str, description: str) -> Dict[str, any]:
+        """
+        Store the research context and generate a detailed breakdown
+        using the LLM. The breakdown is cached for document scoring.
+        """
+        try:
+            logger.info(f"Setting research topic: {topic}")
+            breakdown = self.llm_service.generate_research_breakdown(topic, description)
+            self._research = {
+                "topic": topic,
+                "description": description,
+                "breakdown": breakdown,
+            }
+            logger.info("Research breakdown generated and stored")
+            return {
+                "success": True,
+                "topic": topic,
+                "description": description,
+                "breakdown": breakdown,
+            }
+        except Exception as e:
+            logger.error(f"Research error: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_research(self) -> Dict[str, any]:
+        """Return the currently stored research context."""
+        r = getattr(self, "_research", None)
+        if not r:
+            return {"success": True, "topic": "", "description": "", "breakdown": ""}
+        return {"success": True, **r}
+
+    def score_document(self, document_id: str) -> Dict[str, any]:
+        """Score a document against the current research context."""
+        try:
+            r = getattr(self, "_research", None)
+            if not r or not r.get("topic"):
+                return {
+                    "success": False,
+                    "error": "No research topic set. Set a research topic first.",
+                }
+
+            # Get document text from vector store
+            all_chunks = self.vector_store.get_by_document_id(document_id)
+            if not all_chunks:
+                return {"success": False, "error": "Document not found"}
+
+            text_chunks = [c for c in all_chunks if c.get("content_type", "text") == "text"]
+            full_text = " ".join([c["text"] for c in text_chunks[:15]])
+            filename = all_chunks[0].get("metadata", {}).get("filename", "unknown")
+
+            result = self.llm_service.score_document_relevance(
+                full_text, filename, r["topic"], r["breakdown"]
+            )
+
+            return {
+                "success": True,
+                "document_id": document_id,
+                "filename": filename,
+                "score": result["score"],
+                "explanation": result["explanation"],
+            }
+        except Exception as e:
+            logger.error(f"Scoring error: {e}")
+            return {"success": False, "error": str(e)}

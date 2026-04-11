@@ -53,7 +53,54 @@ htmlcov/
 # Qdrant data
 qdrant_storage/
 
-#pdfs
-
+# PDFs / uploads
 *.pdf
+uploads/
+backend/uploads/
+
+# ── Next.js / Frontend ────────────────────────────
+# dependencies
+node_modules/
+frontend/node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# build output
+.next/
+frontend/.next/
+out/
+frontend/out/
+
+# production build
+build/
+
+# misc
+*.pem
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files (keep .env.example)
+.env*.local
+frontend/.env*.local
+
+# vercel
+.vercel
+frontend/.vercel/
+
+# turborepo
+.turbo
+frontend/.turbo/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# test coverage
+coverage/
+frontend/coverage/
 

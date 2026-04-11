@@ -1,6 +1,3 @@
-"""
-FastAPI main application for Smart Research Paper Analyzer
-"""
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -11,7 +8,8 @@ from services.rag_pipeline import RAGPipeline
 from models.schemas import (
     DocumentUploadResponse, QueryRequest, QueryResponse,
     AnalysisResponse, DeleteResponse, StatsResponse, HealthResponse,
-    EmbeddingConfigRequest, EmbeddingConfigResponse
+    EmbeddingConfigRequest, EmbeddingConfigResponse,
+    ResearchRequest, ResearchResponse, ScoreResponse,
 )
 
 # Configure logging
@@ -238,6 +236,53 @@ async def set_embedding_config(request: EmbeddingConfigRequest):
         raise
     except Exception as e:
         logger.error(f"Embedding switch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Research endpoints ────────────────────────────────────────────
+
+@app.post("/research", response_model=ResearchResponse)
+async def set_research(request: ResearchRequest):
+    """
+    Set or update the research topic and description.
+    Generates a detailed breakdown via the LLM for document scoring.
+    """
+    try:
+        result = rag_pipeline.set_research(request.topic, request.description)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Research error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/research", response_model=ResearchResponse)
+async def get_research():
+    """Get the current research topic, description, and breakdown."""
+    return rag_pipeline.get_research()
+
+
+@app.post("/score/{document_id}", response_model=ScoreResponse)
+async def score_document(document_id: str):
+    """
+    Score a document's relevance to the current research topic (0-100).
+    Requires a research topic to be set first via POST /research.
+    """
+    try:
+        result = rag_pipeline.score_document(document_id)
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400 if "No research" in result.get("error", "") else 500,
+                detail=result.get("error", "Scoring failed"),
+            )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Score error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

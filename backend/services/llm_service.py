@@ -115,12 +115,16 @@ Summary:
             else:
                 text_parts.append(f"{ref} {chunk['text']}")
 
+            meta = chunk.get('metadata', {})
             citations.append({
                 "index": i + 1,
                 "section": chunk.get('section', 'unknown'),
                 "score": chunk.get('score', 0.0),
                 "document_id": chunk.get('document_id', ''),
+                "filename": meta.get('filename', ''),
+                "text": chunk.get('text', ''),
                 "content_type": content_type,
+                "page": chunk.get('page', None),
             })
 
         # Assemble context sections
@@ -137,6 +141,8 @@ Summary:
         # Create prompt
         prompt = f"""
 You are an AI assistant helping researchers analyze academic papers.
+Identify the questions intent and reformulate a more articulated question if needed.
+If there is no relevant contex then use your knowledgebase for answering the question , but put a warning that it is not based on the provided source.
 Answer the following question based ONLY on the provided context from research papers.
 The context may include regular text excerpts, structured tables, and figure/image captions.
 If the context doesn't contain enough information to answer the question, say so.
@@ -211,8 +217,79 @@ Text:
 Limitations (as bullet points):
 """
         response = self.generate_response(prompt, temperature=0.4)
-        
+
         # Parse bullet points
         limitations = [line.strip() for line in response.split('\n') if line.strip().startswith(('-', '•', '*'))]
         return limitations
+
+    # ── Research helpers ──────────────────────────────────────────
+
+    def generate_research_breakdown(self, topic: str, description: str) -> str:
+        """
+        Generate a detailed breakdown of the research topic that can be
+        used later to score uploaded documents for relevance.
+        """
+        prompt = f"""
+You are a research methodology expert. Given the following research topic and
+description, produce a **detailed breakdown** that covers:
+
+1. Core research questions
+2. Key themes and sub-topics
+3. Relevant methodologies and approaches
+4. Expected data types and sources
+5. Important keywords and phrases
+6. Related academic fields and disciplines
+
+Research topic: {topic}
+Description: {description}
+
+Provide the breakdown in structured Markdown so it can be used later to
+evaluate how relevant a given paper is to this research.
+
+Breakdown:
+"""
+        return self.generate_response(prompt, temperature=0.4)
+
+    def score_document_relevance(
+        self, doc_text: str, filename: str,
+        research_topic: str, research_breakdown: str
+    ) -> Dict[str, any]:
+        """
+        Score a document's relevance to the research on a 0-100 scale.
+
+        Returns dict with keys: score (int), explanation (str).
+        """
+        prompt = f"""
+You are an academic research evaluator. Score the following document's
+relevance to the given research topic on a scale of 0 to 100.
+
+Research topic: {research_topic}
+
+Research breakdown:
+{research_breakdown}
+
+Document filename: {filename}
+Document content (excerpt):
+{doc_text[:6000]}
+
+Return your response in EXACTLY this format (no other text):
+SCORE: <number 0-100>
+EXPLANATION: <one paragraph explaining the score>
+"""
+        response = self.generate_response(prompt, temperature=0.2)
+
+        # Parse score
+        score = 50  # default
+        explanation = response
+        for line in response.strip().split('\n'):
+            if line.strip().upper().startswith('SCORE:'):
+                try:
+                    score = int(''.join(c for c in line.split(':', 1)[1] if c.isdigit())[:3])
+                    score = max(0, min(100, score))
+                except Exception:
+                    pass
+            elif line.strip().upper().startswith('EXPLANATION:'):
+                explanation = line.split(':', 1)[1].strip()
+
+        return {"score": score, "explanation": explanation}
 
