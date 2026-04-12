@@ -6,9 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@next/swc-win32-x64-msvc": "^16.2.3",
     "lucide-react": "^0.475.0",
     "next": "^15.5.15",
     "react": "^19.1.0",
@@ -17,12 +21,21 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.24",
     "@tailwindcss/postcss": "^4.1.4",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.14.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "daisyui": "^5.5.19",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^30.3.0",
     "tailwindcss": "^4.1.4",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
 }

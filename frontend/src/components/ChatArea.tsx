@@ -101,9 +101,9 @@ export default function ChatArea({ messages, isLoading, onSend, onCitationClick,
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasReady = sources.some((s) => s.status === "ready");
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+//   useEffect(() => {
+//     bottomRef.current?.scroll({ behavior: "smooth" });
+//   }, [messages, isLoading]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -75,7 +75,6 @@ frontend/out/
 
 # production build
 build/
-
 # misc
 *.pem
 
