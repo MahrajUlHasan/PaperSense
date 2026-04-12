@@ -231,6 +231,54 @@ def test_embedding_round_trip():
     return failed == 0
 
 
+# ====================== Research & Scoring Tests ======================
+
+
+def test_get_research():
+    """Test GET /research – retrieve current research context"""
+    print("\n=== Testing GET /research ===")
+    response = requests.get(f"{BASE_URL}/research")
+    print(f"Status: {response.status_code}")
+    result = response.json()
+    print(f"Response: {json.dumps(result, indent=2)}")
+    return response.status_code == 200
+
+
+def test_set_research(topic: str, description: str):
+    """Test POST /research – set research context"""
+    print(f"\n=== Testing POST /research (topic='{topic}') ===")
+    response = requests.post(
+        f"{BASE_URL}/research",
+        json={"topic": topic, "description": description},
+    )
+    print(f"Status: {response.status_code}")
+    result = response.json()
+    print(f"Topic   : {result.get('topic')}")
+    print(f"Breakdown (first 200 chars): {str(result.get('breakdown', ''))[:200]}")
+
+    if response.status_code == 200 and result.get("success"):
+        print("✅ Research context saved")
+        return True
+    print("❌ Failed to set research")
+    return False
+
+
+def test_score_document(document_id: str):
+    """Test POST /score/{document_id} – score document against research"""
+    print(f"\n=== Testing POST /score/{document_id} ===")
+    response = requests.post(f"{BASE_URL}/score/{document_id}")
+    print(f"Status: {response.status_code}")
+    result = response.json()
+    print(f"Score      : {result.get('score')}/100")
+    print(f"Explanation: {result.get('explanation', 'N/A')[:200]}")
+
+    if response.status_code == 200 and result.get("success"):
+        print(f"✅ Document scored: {result['score']}/100")
+        return True
+    print(f"❌ Scoring failed: {result.get('error', result.get('detail'))}")
+    return False
+
+
 def main():
     """Run all tests"""
     print("=" * 60)
@@ -250,6 +298,14 @@ def main():
     # Test embedding provider switching
     test_embedding_round_trip()
 
+    # Test research (before upload so scoring can happen after)
+    test_get_research()
+    topic = input("\nEnter a research topic (or Enter to skip): ").strip()
+    if topic:
+        desc = input("Enter research description: ").strip()
+        test_set_research(topic, desc)
+        test_get_research()
+
     # Test upload (you need to provide a PDF path)
     pdf_path = input("\nEnter path to a PDF file to test (or press Enter to skip): ").strip()
 
@@ -258,6 +314,10 @@ def main():
 
         if document_id:
             print(f"\n✅ Document uploaded successfully! ID: {document_id}")
+
+            # Test scoring against research
+            if topic:
+                test_score_document(document_id)
 
             # Test query
             test_query("What are the main findings of this paper?", document_id)

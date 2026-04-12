@@ -9,8 +9,6 @@ from config import settings
 
 
 class LLMService:
-    """Google Gemini LLM service for generation using google.genai"""
-
     def __init__(self):
         # Initialize the Gemini client with API key
         self.client = genai.Client(api_key=settings.google_api_key)
