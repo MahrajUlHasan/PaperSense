@@ -1,6 +1,5 @@
 """
 Qdrant vector store service for storing and retrieving embeddings
-Updated to use the latest qdrant-client API (query_points)
 """
 from typing import List, Dict, Optional
 from qdrant_client import QdrantClient, models
