@@ -11,6 +11,7 @@ from services.chunker import Chunker
 from services.embedding_service import get_embedding_service, EMBEDDING_DIMENSIONS
 from services.vector_store import VectorStore
 from services.llm_service import LLMService
+from services.conversation_memory import ConversationMemory
 from config import settings
 
 
@@ -26,6 +27,7 @@ class RAGPipeline:
         self.embedding_service = get_embedding_service()
         self.vector_store = VectorStore()
         self.llm_service = LLMService()
+        self.conversation_memory = ConversationMemory()
 
         logger.info("RAG Pipeline initialized")
 
@@ -223,21 +225,30 @@ class RAGPipeline:
                 score_threshold=settings.similarity_threshold
             )
 
-            if not retrieved_chunks:
-                return {
-                    "success": False,
-                    "answer": "No relevant information found in the knowledge base.",
-                    "citations": [],
-                    "context_used": 0
-                }
+            # if not retrieved_chunks:
+            #     return {
+            #         "success": False,
+            #         "answer": "No relevant information found in the knowledge base.",
+            #         "citations": [],
+            #         "context_used": 0
+            #     }
 
-            # Step 3: Generate answer using LLM
-            logger.info("Step 3: Generating answer")
-            result = self.llm_service.answer_question(question, retrieved_chunks)
+            # Step 3: Get conversation history for follow-up awareness
+            history = self.conversation_memory.get_context_for_prompt()
+
+            # Step 4: Generate answer using LLM
+            logger.info("Step 4: Generating answer")
+            result = self.llm_service.answer_question(
+                question, retrieved_chunks, conversation_history=history
+            )
 
             result["success"] = True
             result["question"] = question
 
+            # Step 5: Record this Q&A turn in conversation memory
+            self.conversation_memory.add_turn(question, result["answer"])
+
+            logger.debug(f"Query processed successfully. Answer: {result['answer']}")
             return result
 
         except Exception as e:

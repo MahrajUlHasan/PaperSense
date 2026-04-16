@@ -54,9 +54,21 @@ function walk(
   citations: Citation[] | undefined,
   onClick: (c: Citation) => void
 ): React.ReactNode {
-  return React.Children.map(children, (child) =>
-    typeof child === "string" ? injectCitations(child, citations, onClick) : child
-  );
+  return React.Children.map(children, (child) => {
+    if (typeof child === "string") {
+      return injectCitations(child, citations, onClick);
+    }
+    // Recurse into nested React elements so citations inside
+    // <strong>, <em>, <span>, etc. are still detected
+    if (React.isValidElement(child) && (child.props as any)?.children) {
+      return React.cloneElement(
+        child,
+        {},
+        walk((child.props as any).children, citations, onClick)
+      );
+    }
+    return child;
+  });
 }
 
 /* ── Markdown renderer ────────────────────────────────────────── */
@@ -71,16 +83,16 @@ function Md({
     li: ({ children, ...ps }: any) => <li className="ml-1" {...ps}>{walk(children, citations, onClick)}</li>,
     strong: ({ children, ...ps }: any) => <strong className="font-bold" {...ps}>{walk(children, citations, onClick)}</strong>,
     em: ({ children, ...ps }: any) => <em {...ps}>{walk(children, citations, onClick)}</em>,
-    h1: ({ children }: any) => <h3 className="text-base font-bold mt-3 mb-1">{children}</h3>,
-    h2: ({ children }: any) => <h4 className="text-sm font-bold mt-2 mb-1">{children}</h4>,
-    h3: ({ children }: any) => <h5 className="text-sm font-semibold mt-2 mb-1">{children}</h5>,
+    h1: ({ children }: any) => <h3 className="text-base font-bold mt-3 mb-1">{walk(children, citations, onClick)}</h3>,
+    h2: ({ children }: any) => <h4 className="text-sm font-bold mt-2 mb-1">{walk(children, citations, onClick)}</h4>,
+    h3: ({ children }: any) => <h5 className="text-sm font-semibold mt-2 mb-1">{walk(children, citations, onClick)}</h5>,
     ul: ({ children }: any) => <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>,
     ol: ({ children }: any) => <ol className="list-decimal pl-5 mb-2 space-y-0.5">{children}</ol>,
     table: ({ children }: any) => (
       <div className="overflow-x-auto mb-2"><table className="table table-xs">{children}</table></div>
     ),
     blockquote: ({ children }: any) => (
-      <blockquote className="border-l-4 border-primary/40 pl-3 italic opacity-80 mb-2">{children}</blockquote>
+      <blockquote className="border-l-4 border-primary/40 pl-3 italic opacity-80 mb-2">{walk(children, citations, onClick)}</blockquote>
     ),
     code: ({ children, className }: any) => {
       const block = className?.includes("language-");

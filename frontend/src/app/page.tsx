@@ -117,8 +117,19 @@ export default function Home() {
 
   /* ── Citations → PDF ─────────────────────────────────────────── */
   const handleCitation = useCallback((cit: Citation) => {
-    const src = sources.find((s) => s.documentId === cit.document_id);
-    if (src) { setViewerCitation(cit); setViewerSource(src); setViewerOpen(true); }
+    // Primary match: by document_id
+    let src = sources.find((s) => s.documentId === cit.document_id);
+    // Fallback: match by filename (covers id-format mismatches)
+    if (!src && cit.filename) {
+      src = sources.find((s) => s.filename === cit.filename);
+    }
+    if (src) {
+      setViewerCitation(cit);
+      setViewerSource(src);
+      setViewerOpen(true);
+    } else {
+      console.warn("[PaperSense] Citation source not found:", cit);
+    }
   }, [sources]);
 
   /* ── Render ──────────────────────────────────────────────────── */

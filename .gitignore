@@ -41,7 +41,7 @@ logs/
 *.swp
 *.swo
 *~
-
+./.idea
 # OS
 .DS_Store
 Thumbs.db
@@ -58,6 +58,10 @@ qdrant_storage/
 *.pdf
 uploads/
 backend/uploads/
+
+# Conversation memory (auto-generated, cleared on shutdown)
+backend/context.md
+context.md
 
 # ── Next.js / Frontend ────────────────────────────
 # dependencies

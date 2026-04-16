@@ -13,7 +13,10 @@ from typing import Dict, List, Optional
 
 import PyPDF2
 import pdfplumber
+from defusedxml.lxml import tostring
 from loguru import logger
+
+from config import settings
 
 # Docling imports – wrapped so the rest of the module still works if docling
 # is not installed (graceful degradation).
@@ -46,14 +49,15 @@ class PDFParser:
     # ------------------------------------------------------------------
 
     def _get_docling_converter(self) -> "DocumentConverter":
-        """Return a cached DocumentConverter, creating it on first call."""
+        """Return a cached DocumentConverter, creating it on the first call."""
         if self._docling_converter is None:
             pipeline_options = PdfPipelineOptions()
             pipeline_options.do_table_structure = True
-            pipeline_options.generate_picture_images = False  # skip heavy image generation todo:turn on if there is enough ram
-            pipeline_options.generate_page_images = False     # not needed for RAG
+            pipeline_options.generate_picture_images = False # skip heavy image generation todo:turn on if there is enough ram
+            pipeline_options.generate_page_images = False
             pipeline_options.images_scale = 1.0               # lower resolution to save memory
-            pipeline_options.do_ocr = False                   # skip OCR for born-digital PDFs
+            # pipeline_options.do_ocr = False                   # skip OCR for born-digital PDFs
+            pipeline_options.do_ocr= False#settings.D0CLING_OCR
 
             self._docling_converter = DocumentConverter(
                 format_options={

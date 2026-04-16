@@ -1,7 +1,9 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import sys
+import json
 
 from config import settings
 from services.rag_pipeline import RAGPipeline
@@ -17,11 +19,30 @@ logger.remove()
 logger.add(sys.stderr, level="INFO" if not settings.debug else "DEBUG")
 logger.add("logs/app.log", rotation="500 MB", level="DEBUG")
 
+# Initialize RAG pipeline
+rag_pipeline = RAGPipeline()
+
+logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+
+
+# Lifespan: clear conversation memory on startup and shutdown
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Startup – fresh conversation each run
+    rag_pipeline.conversation_memory.clear()
+    logger.info("Conversation memory cleared on startup")
+    yield
+    # Shutdown – clean up
+    rag_pipeline.conversation_memory.clear()
+    logger.info("Conversation memory cleared on shutdown")
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="RAG-based research paper analyzer with Qdrant, OpenAI, and Gemini"
+    description="RAG-based research paper analyzer with Qdrant, OpenAI, and Gemini",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -32,11 +53,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Initialize RAG pipeline
-rag_pipeline = RAGPipeline()
-
-logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
 
 def _health_payload() -> dict:
@@ -120,7 +136,7 @@ async def query_documents(request: QueryRequest):
             document_id=request.document_id,
             top_k=request.top_k
         )
-        
+        logger.debug(f"Query result: {json.dumps(result, indent=4)}")
         return result
         
     except Exception as e:

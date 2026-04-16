@@ -79,7 +79,7 @@ Summary:
 """
         return self.generate_response(prompt, temperature=0.5)
     
-    def answer_question(self, question: str, context_chunks: List[Dict[str, any]]) -> Dict[str, any]:
+    def answer_question(self, question: str, context_chunks: List[Dict[str, any]], conversation_history: str = "") -> Dict[str, any]:
         """
         Answer a question based on retrieved context chunks.
 
@@ -106,11 +106,11 @@ Summary:
             content_type = chunk.get('content_type', 'text')
 
             if content_type == 'table':
-                table_parts.append(f"{ref} {chunk['text']}")
+                table_parts.append(f"{ref} :{chunk['text']}")
             elif content_type == 'image':
-                image_parts.append(f"{ref} {chunk['text']}")
+                image_parts.append(f"{ref} :{chunk['text']}")
             else:
-                text_parts.append(f"{ref} {chunk['text']}")
+                text_parts.append(f"{ref} :{chunk['text']}")
 
             meta = chunk.get('metadata', {})
             citations.append({
@@ -121,7 +121,7 @@ Summary:
                 "filename": meta.get('filename', ''),
                 "text": chunk.get('text', ''),
                 "content_type": content_type,
-                "page": chunk.get('page', None),
+                "page": chunk.get('page') or meta.get('page') or meta.get('page_number'),
             })
 
         # Assemble context sections
@@ -134,6 +134,17 @@ Summary:
             context_sections.append("FIGURES/IMAGES:\n" + "\n\n".join(image_parts))
 
         context = "\n\n---\n\n".join(context_sections)
+
+        #todo: remove logging
+        logger.info(f"Context sections:\n{context_sections}")
+        # Build optional conversation-history block
+        history_block = ""
+        if conversation_history:
+            history_block = f"""
+Previous conversation (use this to understand follow-up questions):
+{conversation_history}
+---
+"""
 
         # Create prompt
         prompt = f"""
@@ -148,6 +159,7 @@ Always cite your sources using the reference numbers [1], [2], etc.
 When the answer involves data from a TABLE, present the relevant data clearly
 (you may re-format as a table if it helps readability).
 
+{history_block}
 Context from research papers:
 {context}
 
@@ -160,8 +172,8 @@ Instructions:
 4. When figures are relevant, mention them by their captions
 5. If information is insufficient, acknowledge it
 6. Be concise but comprehensive
+7. If the question is a follow-up to the previous conversation, use the conversation history to provide a coherent answer.
 
-Answer:
 """
 
         answer = self.generate_response(prompt, temperature=0.3)
