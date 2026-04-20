@@ -41,7 +41,7 @@ logs/
 *.swp
 *.swo
 *~
-./.idea
+./.ideagit
 # OS
 .DS_Store
 Thumbs.db
