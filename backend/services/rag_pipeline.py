@@ -193,15 +193,17 @@ class RAGPipeline:
         self,
         question: str,
         document_id: Optional[str] = None,
-        top_k: int = None
+        top_k: int = None,
+        use_hybrid: bool = False,
     ) -> Dict[str, any]:
         """
-        Query the knowledge base with a question
+        Query the knowledge base with a question.
 
         Args:
             question: User's question
             document_id: Optional specific document to search
             top_k: Number of chunks to retrieve
+            use_hybrid: If True, use hybrid search (dense + BM25 → ColBERT rerank)
 
         Returns:
             Answer with citations and context
@@ -210,28 +212,30 @@ class RAGPipeline:
             if top_k is None:
                 top_k = settings.top_k_results
 
-            logger.info(f"Processing query: {question}")
+            mode = "hybrid" if use_hybrid else "dense"
+            logger.info(f"Processing query ({mode}): {question}")
 
-            # Step 1: Generate query embedding
+            # Step 1: Generate dense query embedding
             logger.info("Step 1: Generating query embedding")
             query_embedding = self.embedding_service.generate_embedding(question)
 
             # Step 2: Retrieve relevant chunks
-            logger.info("Step 2: Retrieving relevant chunks")
-            retrieved_chunks = self.vector_store.search(
-                query_vector=query_embedding,
-                top_k=top_k,
-                document_id=document_id,
-                score_threshold=settings.similarity_threshold
-            )
-
-            # if not retrieved_chunks:
-            #     return {
-            #         "success": False,
-            #         "answer": "No relevant information found in the knowledge base.",
-            #         "citations": [],
-            #         "context_used": 0
-            #     }
+            if use_hybrid:
+                logger.info("Step 2: Hybrid search (dense + BM25 → ColBERT rerank)")
+                retrieved_chunks = self.vector_store.hybrid_search(
+                    query_vector=query_embedding,
+                    query_text=question,
+                    top_k=top_k,
+                    document_id=document_id,
+                )
+            else:
+                logger.info("Step 2: Dense-only search")
+                retrieved_chunks = self.vector_store.search(
+                    query_vector=query_embedding,
+                    top_k=top_k,
+                    document_id=document_id,
+                    score_threshold=settings.similarity_threshold,
+                )
 
             # Step 3: Get conversation history for follow-up awareness
             history = self.conversation_memory.get_context_for_prompt()
@@ -244,6 +248,7 @@ class RAGPipeline:
 
             result["success"] = True
             result["question"] = question
+            result["search_mode"] = mode
 
             # Step 5: Record this Q&A turn in conversation memory
             self.conversation_memory.add_turn(question, result["answer"])

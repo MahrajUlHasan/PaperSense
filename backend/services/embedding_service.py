@@ -262,7 +262,7 @@ class GemmaEmbeddingService:
         self.client = genai.Client(api_key=settings.google_api_key)
         self.model_name = "gemini-embedding-2-preview"
         self.multimodal_embedding_model = getattr(settings, "gemma_multimodal_model", "gemini-embedding-2-preview")
-        self.embedding_dimension = 768
+        self.embedding_dimension = 3072 #768
         self._rate_limiter = _RateLimiter()
         logger.info(f"Gemma embedding service initialised ({self.model_name})")
 

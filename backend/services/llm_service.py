@@ -121,7 +121,7 @@ Summary:
                 "filename": meta.get('filename', ''),
                 "text": chunk.get('text', ''),
                 "content_type": content_type,
-                "page": chunk.get('page') or meta.get('page') or meta.get('page_number'),
+                "page": meta.get('page_number') or chunk.get('page') or meta.get('page'),
             })
 
         # Assemble context sections
@@ -136,7 +136,7 @@ Summary:
         context = "\n\n---\n\n".join(context_sections)
 
         #todo: remove logging
-        logger.info(f"Context sections:\n{context_sections}")
+        logger.debug(f"Context sections:\n{context_sections}")
         # Build optional conversation-history block
         history_block = ""
         if conversation_history:

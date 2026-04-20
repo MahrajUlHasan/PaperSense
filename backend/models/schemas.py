@@ -20,6 +20,7 @@ class QueryRequest(BaseModel):
     question: str = Field(..., description="what is the topic of this paper and is it relevent to genAI")
     document_id: Optional[str] = Field(None, description="Specific document to search")
     top_k: Optional[int] = Field(5, description="Number of chunks to retrieve")
+    use_hybrid: Optional[bool] = Field(False, description="Use hybrid search (dense + BM25 + ColBERT rerank)")
 
 
 class Citation(BaseModel):

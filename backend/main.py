@@ -134,7 +134,8 @@ async def query_documents(request: QueryRequest):
         result = rag_pipeline.query(
             question=request.question,
             document_id=request.document_id,
-            top_k=request.top_k
+            top_k=request.top_k,
+            use_hybrid=request.use_hybrid or False,
         )
         logger.debug(f"Query result: {json.dumps(result, indent=4)}")
         return result

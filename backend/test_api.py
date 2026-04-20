@@ -279,6 +279,70 @@ def test_score_document(document_id: str):
     return False
 
 
+# ====================== Hybrid vs Dense Search Comparison ======================
+
+
+def test_hybrid_vs_dense(question: str, document_id: str = None):
+    """
+    Query the same question with both dense-only and hybrid search,
+    then print a side-by-side comparison of the results.
+    """
+    print("\n" + "=" * 70)
+    print("  HYBRID vs DENSE  Search Comparison")
+    print("=" * 70)
+    print(f"Question: {question}\n")
+
+    # ── Dense-only ────────────────────────────────────────────────
+    payload_dense = {"question": question, "top_k": 5, "use_hybrid": False}
+    if document_id:
+        payload_dense["document_id"] = document_id
+
+    r_dense = requests.post(f"{BASE_URL}/query", json=payload_dense)
+    dense = r_dense.json() if r_dense.status_code == 200 else {}
+
+    # ── Hybrid ────────────────────────────────────────────────────
+    payload_hybrid = {"question": question, "top_k": 5, "use_hybrid": True}
+    if document_id:
+        payload_hybrid["document_id"] = document_id
+
+    r_hybrid = requests.post(f"{BASE_URL}/query", json=payload_hybrid)
+    hybrid = r_hybrid.json() if r_hybrid.status_code == 200 else {}
+
+    # ── Print comparison ──────────────────────────────────────────
+    for label, result in [("DENSE", dense), ("HYBRID", hybrid)]:
+        print(f"\n{'─' * 35} {label} {'─' * 35}")
+        if not result.get("success"):
+            print(f"  ❌ Error: {result.get('error', 'unknown')}")
+            continue
+        print(f"  Search mode : {result.get('search_mode', 'N/A')}")
+        print(f"  Context used: {result.get('context_used', 0)} chunks")
+        cits = result.get("citations", [])
+        print(f"  Citations   : {len(cits)}")
+        for c in cits:
+            print(f"    [{c.get('index')}] section=\"{c.get('section')}\"  "
+                  f"score={c.get('score', 0):.2f}  "
+                  f"type={c.get('content_type', 'text')}  "
+                  f"page={c.get('page', '?')}")
+        answer_preview = (result.get("answer") or "")[:300]
+        print(f"  Answer (first 300 chars):\n    {answer_preview}")
+
+    # ── Quick diff ────────────────────────────────────────────────
+    d_cit_ids = {c.get("section", "") + str(c.get("index", "")) for c in dense.get("citations", [])}
+    h_cit_ids = {c.get("section", "") + str(c.get("index", "")) for c in hybrid.get("citations", [])}
+    overlap = d_cit_ids & h_cit_ids
+    print(f"\n{'─' * 35} DIFF {'─' * 35}")
+    print(f"  Overlapping citations: {len(overlap)} / dense={len(d_cit_ids)}, hybrid={len(h_cit_ids)}")
+
+    d_ans = (dense.get("answer") or "")[:100]
+    h_ans = (hybrid.get("answer") or "")[:100]
+    print(f"  Dense answer starts : {d_ans}")
+    print(f"  Hybrid answer starts: {h_ans}")
+    print(f"  Answers identical   : {dense.get('answer') == hybrid.get('answer')}")
+    print("=" * 70)
+
+    return True
+
+
 def main():
     """Run all tests"""
     print("=" * 60)
@@ -319,8 +383,15 @@ def main():
             if topic:
                 test_score_document(document_id)
 
-            # Test query
+            # Test query (dense only)
             test_query("What are the main findings of this paper?", document_id)
+
+            # ── Hybrid vs Dense comparison ────────────────────────
+            compare_q = input(
+                "\nEnter a question for hybrid vs dense comparison (or Enter to skip): "
+            ).strip()
+            if compare_q:
+                test_hybrid_vs_dense(compare_q, document_id)
 
             # Test analysis
             test_analyze(document_id)

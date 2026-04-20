@@ -1,0 +1,7 @@
+PUT http://localhost:8000/embedding
+Content-Type: application/json
+Accept: application/json
+
+{
+  "provider": "gemma"
+}

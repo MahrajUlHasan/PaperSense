@@ -54,7 +54,7 @@ export default function PdfViewer({ isOpen, citation, source, onClose }: Props) 
               <BookOpen size={14} />
               Citation [{citation.index}] — {citation.section}
               <span className="ml-auto opacity-60">
-                {(citation.score * 100).toFixed(0)}% match
+                {(citation.score *10).toFixed(0)}% match
               </span>
             </div>
 
