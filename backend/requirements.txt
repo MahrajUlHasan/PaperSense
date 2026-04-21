@@ -12,7 +12,7 @@ defusedxml==0.7.1
 
 # Vector Database
 qdrant-client==1.7.3
-fastembed==0.3.4
+fastembed==0.8.0
 
 # Embeddings and AI
 openai==1.12.0
