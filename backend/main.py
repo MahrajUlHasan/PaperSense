@@ -35,6 +35,8 @@ async def lifespan(application: FastAPI):
     # Shutdown – clean up
     rag_pipeline.conversation_memory.clear()
     logger.info("Conversation memory cleared on shutdown")
+    rag_pipeline.vector_store.close()
+    logger.info("Vector store closed")
 
 
 # Initialize FastAPI app
@@ -46,9 +48,10 @@ app = FastAPI(
 )
 
 # Configure CORS
+#todo: configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

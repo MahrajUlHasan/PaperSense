@@ -90,7 +90,10 @@ export default function Sidebar({
                   {cfg.label}
                 </div>
                 {src.error && (
+
                   <p className="text-xs text-red-400 mt-1 truncate">{src.error}</p>
+
+
                 )}
               </div>
 

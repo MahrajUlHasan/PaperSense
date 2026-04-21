@@ -344,6 +344,7 @@ class GemmaEmbeddingService:
             ct = chunk.get("content_type", "text")
             if ct == "image" and chunk.get("image_base64"):
                 emb = self.generate_image_embedding(chunk["image_base64"])
+                logger.debug(f"Generated Image embedding: {emb}")
                 if emb:
                     chunk["embedding"] = emb
                     continue

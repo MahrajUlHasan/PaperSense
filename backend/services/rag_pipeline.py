@@ -249,6 +249,8 @@ class RAGPipeline:
             result["success"] = True
             result["question"] = question
             result["search_mode"] = mode
+            if not retrieved_chunks:
+                result["error"] = "No relevant information found."
 
             # Step 5: Record this Q&A turn in conversation memory
             self.conversation_memory.add_turn(question, result["answer"])

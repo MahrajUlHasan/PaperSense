@@ -281,6 +281,7 @@ class VectorStore:
         query_text: str,
         top_k: int = 5,
         document_id: Optional[str] = None,
+
         prefetch_limit: int = 20,
     ) -> List[Dict[str, any]]:
         """
@@ -433,3 +434,7 @@ class VectorStore:
             logger.error(f"Error getting collection info: {e}")
             return {}
 
+
+    def close(self):
+        self.client.delete_collection(self.collection_name)
+        logger.info(f"Collection {self.collection_name} deleted")

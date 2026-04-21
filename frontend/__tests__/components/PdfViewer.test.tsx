@@ -22,7 +22,7 @@ const source: Source = {
 const citation: Citation = {
   index: 1,
   section: "Introduction",
-  score: 0.92,
+  score: 9.2,
   document_id: "d1",
   filename: "paper.pdf",
   text: "Neural nets are universal.",

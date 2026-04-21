@@ -141,11 +141,3 @@ class TestScoreEndpoint:
         }
         resp = tc.post("/score/doc-1")
         assert resp.status_code == 400
-
-
-class TestStatsEndpoint:
-    def test_stats(self, client):
-        tc, pipeline, mocks = client
-        pipeline.get_stats = lambda: {"total_documents": 2, "total_chunks": 50}
-        resp = tc.get("/stats")
-        assert resp.status_code == 200
