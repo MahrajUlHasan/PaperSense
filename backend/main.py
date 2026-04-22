@@ -17,10 +17,10 @@ from models.schemas import (
 # Configure logging
 logger.remove()
 logger.add(sys.stderr, level="INFO" if not settings.debug else "DEBUG")
-logger.add("logs/app.log", rotation="500 MB", level="DEBUG")
+logger.add("logs/app.log", rotation="50 MB", level="DEBUG")
 
 # Initialize RAG pipeline
-rag_pipeline = RAGPipeline()
+rag_pipeline:RAGPipeline = None
 
 logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
@@ -29,6 +29,9 @@ logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     # Startup – fresh conversation each run
+    global rag_pipeline
+    logger.info("Initializing RAG Pipeline (Loading models/vector store)...")
+    rag_pipeline = RAGPipeline()
     rag_pipeline.conversation_memory.clear()
     logger.info("Conversation memory cleared on startup")
     yield
