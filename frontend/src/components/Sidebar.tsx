@@ -15,6 +15,7 @@ interface SidebarProps {
 const statusConfig = {
   uploading: { icon: Loader2, color: "text-yellow-400", label: "Uploading…", spin: true },
   processing: { icon: Loader2, color: "text-blue-400", label: "Processing…", spin: true },
+  scoring: { icon: Loader2, color: "text-purple-400", label: "Scoring...", spin: true },
   ready: { icon: CheckCircle2, color: "text-green-400", label: "Ready", spin: false },
   error: { icon: AlertCircle, color: "text-red-400", label: "Error", spin: false },
 };

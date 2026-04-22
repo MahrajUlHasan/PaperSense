@@ -106,7 +106,7 @@ class EmbeddingService:
     def __init__(self):
         self.client = openai.OpenAI(api_key=settings.openai_api_key)
         self.model = settings.embedding_model
-        self.embedding_dimension = 1536  # Default for text-embedding-3-small
+        self.embedding_dimension = 1536
 
     def generate_embedding(self, text: str) -> List[float]:
         """
@@ -379,7 +379,7 @@ def get_embedding_service(provider: Optional[str] = None):
         provider: One of 'openai', 'langchain', 'gemma'.
                   Defaults to ``settings.embedding_provider``.
     """
-    provider = (provider or getattr(settings, "embedding_provider", "openai")).lower()
+    provider = (provider or getattr(settings, "embedding_provider", "gemma")).lower()
 
     if provider == "langchain":
         logger.info("Using LangChain (Google GenAI) embedding provider")

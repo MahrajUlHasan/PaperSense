@@ -26,6 +26,7 @@ class RAGPipeline:
         )
         self.embedding_service = get_embedding_service()
         self.vector_store = VectorStore()
+        self.vector_store.recreate_collection(self.embedding_service.embedding_dimension)
         self.llm_service = LLMService()
         self.conversation_memory = ConversationMemory()
 
