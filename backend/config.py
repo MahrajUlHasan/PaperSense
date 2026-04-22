@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # API Keys
     google_api_key: str = Field(..., env="GOOGLE_API_KEY")
     openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
+    HF_TOKEN: Optional[str] = Field(None, env="HF_TOKEN")
     
     # Qdrant Configuration
     qdrant_host: str = Field(default="localhost", env="QDRANT_HOST")
