@@ -55,7 +55,8 @@ class PDFParser:
             pipeline_options.do_table_structure = True
             pipeline_options.generate_picture_images = False # skip heavy image generation todo:turn on if there is enough ram
             pipeline_options.generate_page_images = False
-            pipeline_options.images_scale = 1.0               # lower resolution to save memory
+            pipeline_options.images_scale = 1.0
+            pipeline_options.do_formula_enrichment = True
             # pipeline_options.do_ocr = False                   # skip OCR for born-digital PDFs
             pipeline_options.do_ocr= False#settings.D0CLING_OCR
 

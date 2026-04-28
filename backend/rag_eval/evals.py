@@ -1,179 +1,194 @@
 import os
 import sys
+import asyncio
 from pathlib import Path
+import pandas as pd
 
-from openai import OpenAI
-
-from ragas import Dataset, experiment
+from openai import AsyncOpenAI
 from ragas.llms import llm_factory
-from ragas.metrics import DiscreteMetric
-from ragas.metrics import (
-    faithfulness,
-    answer_relevancy,
-    context_precision,
-    context_recall
-)
-from ragas import evaluate, EvaluationDataset
-from ragas.dataset_schema import SingleTurnSample
 from ragas.embeddings import embedding_factory
 
-from google import genai
+# Import metric classes directly for manual scoring
+from ragas.metrics.collections import (
+    Faithfulness,
+    AnswerRelevancy,
+    ContextPrecision,
+    ContextRecall,
+    NoiseSensitivity
+)
+
 from rag_adapter import PaperSenseRAGAdapter
 
+# Initialize Async OpenAI Client for Ragas Scorers
+client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Add the current directory to the path so we can import rag module when run as a script
-sys.path.insert(0, str(Path(__file__).parent))
-from rag import default_rag_client
-from config import settings
+# Setup LLM and Embeddings specifically for the metrics
+llm = llm_factory("gpt-4o", client=client)
+embeddings = embedding_factory("openai","text-embedding-3-small", client=client)
 
-
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-# openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-rag_client = default_rag_client(llm_client=openai_client, logdir="evals/logs")
-llm = llm_factory("gpt-4o", client=openai_client)
-# embeddings = embedding_factory("openai", client=openai_client)
-# embeddings = genai.Client(api_key=settings.google_api_key)
+# Instantiate the individual metric scorers
+faithfulness_scorer = Faithfulness(llm=llm)
+relevancy_scorer = AnswerRelevancy(llm=llm, embeddings=embeddings)
+precision_scorer = ContextPrecision(llm=llm, embeddings=embeddings)
+recall_scorer = ContextRecall(llm=llm, embeddings=embeddings)
 
 
 def load_dataset():
-    dataset = Dataset(
-        name="test_dataset",
-        backend="local/csv",
-        root_dir="evals",
-    )
-
-    data_samples = [
+    """Returns 10 specific Q&A pairs for 'Attention Is All You Need'."""
+    return [
         {
             "question": "What is the main architecture proposed in this paper?",
-            "ground_truth": "The main architecture proposed is the Transformer, which is based solely on attention mechanisms, dispensing with recurrence and convolutions entirely."
+            "ground_truth": "The Transformer, an architecture based entirely on attention mechanisms, dispensing with recurrence and convolutions."
         },
         {
-            "question": "What are the advantages of self-attention according to the authors?",
-            "ground_truth": "Self-attention reduces computational complexity per layer, allows for more parallelization, and yields shorter path lengths between long-range dependencies in the network."
+            "question": "What type of attention mechanism does the Transformer rely on?",
+            "ground_truth": "It relies on Multi-Head Attention, which consists of several parallel Scaled Dot-Product Attention layers."
         },
         {
-            "question": "Which optimizer was used for training the models?",
-            "ground_truth": "The Adam optimizer was used with varying learning rates."
+            "question": "Why do the authors use a scaling factor of 1/sqrt(d_k) in the attention mechanism?",
+            "ground_truth": "To prevent the dot products from growing too large in magnitude, which would push the softmax function into regions where it has extremely small gradients."
+        },
+        {
+            "question": "How does the model inject information about the relative or absolute position of the tokens?",
+            "ground_truth": "By adding positional encodings to the input embeddings at the bottoms of the encoder and decoder stacks, using sine and cosine functions of different frequencies."
+        },
+        {
+            "question": "What optimizer is used to train the Transformer model?",
+            "ground_truth": "The Adam optimizer with specific parameters (beta1=0.9, beta2=0.98, eps=10^-9) and a custom learning rate schedule."
+        },
+        {
+            "question": "What regularization techniques are employed during training?",
+            "ground_truth": "Residual dropout (applied to the output of each sub-layer and the sums of embeddings and positional encodings) and label smoothing."
+        },
+        {
+            "question": "How many layers (N) are in the encoder and decoder stacks of the base model?",
+            "ground_truth": "Both the encoder and decoder are composed of a stack of N=6 identical layers."
+        },
+        {
+            "question": "What is the BLEU score achieved by the Transformer (big) model on the English-to-German translation task?",
+            "ground_truth": "It achieved a BLEU score of 28.4 on the WMT 2014 English-to-German translation task."
+        },
+        {
+            "question": "What are the advantages of self-attention over recurrent layers according to the paper?",
+            "ground_truth": "Self-attention reduces the total computational complexity per layer, allows for more parallelizable computation, and shortens the path length between long-range dependencies."
+        },
+        {
+            "question": "What hardware was used to train the models?",
+            "ground_truth": "The models were trained on one machine with 8 NVIDIA P100 GPUs."
         }
     ]
 
-    for sample in data_samples:
-        row = {"question": sample["question"], "ground_truth": sample["ground_truth"]}
-        dataset.append(row)
 
-    # make sure to save it
-    dataset.save()
-    return dataset
+def extract_value(result):
+    """Helper to safely extract the numerical value from the Ragas Result object"""
+    return getattr(result, "value", result)
 
 
-my_metric = DiscreteMetric(
-    name="correctness",
-    prompt="Check if the response contains points mentioned from the grading notes and return 'pass' or 'fail'.\nResponse: {response} Grading Notes: {grading_notes}",
-    allowed_values=["pass", "fail"],
-)
+async def run_evaluation_mode(adapter, raw_data, use_hybrid: bool, mode_name: str):
+    """Runs the RAG pipeline and scores it concurrently question-by-question."""
+    print(f"\n==============================================")
+    print(f"RUNNING EVALUATION MODE: {mode_name}")
+    print(f"==============================================")
 
+    results_list = []
 
-@experiment()
-async def run_experiment(row):
-    response = rag_client.query(row["question"])
-    score = my_metric.score(
-        llm=llm,
-        response=response.get("answer", " "),
-        grading_notes=row["grading_notes"],
-    )
-    score2 =my_metric.score(
-        llm=llm,
-        response=response2.get("answer", " "),
-        grading_notes=row["grading_notes"],
-    )
+    for row in raw_data:
+        question = row["question"]
+        reference = row["ground_truth"]
+        print(f"\nAsking: {question}")
 
-    experiment_view = {
-        **row,
-        "response": response.get("answer", ""),
-        "score": score.value,
-        "log_file": response.get("logs", " "),
-    }
-    return experiment_view
+        # 1. Gather response from the RAG Pipeline (Synchronous execution)
+        response = adapter.query(question, use_hybrid=use_hybrid)
+        ans = response.get("answer", "")
+        contexts = response.get("contexts", [])
+
+        print("  -> Scoring with Ragas...")
+
+        # 2. Score concurrently across all metrics for this single question
+        # Faithfulness and Relevancy only need inputs/response/contexts
+        task_f = faithfulness_scorer.ascore(
+            user_input=question,
+            response=ans,
+            retrieved_contexts=contexts
+        )
+        task_r = relevancy_scorer.ascore(
+            user_input=question,
+            response=ans
+        )
+        # Precision and Recall also require the ground truth reference
+        task_p = precision_scorer.ascore(
+            user_input=question,
+            retrieved_contexts=contexts,
+            reference=reference
+        )
+        task_c = recall_scorer.ascore(
+            user_input=question,
+            retrieved_contexts=contexts,
+            reference=reference
+        )
+
+        # Run the metric evaluations concurrently
+        f_res, r_res, p_res, c_res = await asyncio.gather(task_f, task_r, task_p, task_c)
+
+        # Ragas 0.3+ returns a custom result object for `.ascore`, we extract `.value`
+        f_score = extract_value(f_res)
+        r_score = extract_value(r_res)
+        p_score = extract_value(p_res)
+        c_score = extract_value(c_res)
+
+        print(f"  -> Faithfulness: {f_score} | Relevancy: {r_score} | Precision: {p_score} | Recall: {c_score}")
+
+        results_list.append({
+            "question": question,
+            "answer": ans,
+            "ground_truth": reference,
+            "faithfulness": f_score,
+            "answer_relevancy": r_score,
+            "context_precision": p_score,
+            "context_recall": c_score,
+            "search_mode": mode_name
+        })
+
+    return pd.DataFrame(results_list)
 
 
 async def main():
     print("Initializing PaperSense RAG Adapter...")
     adapter = PaperSenseRAGAdapter()
 
-    # Step 1: Ingest the test document
     test_paper_path = Path(__file__).parent / "evals" /"datasets" / "test_paper.pdf"
 
     if not test_paper_path.exists():
         print(f"Error: Test paper not found at {test_paper_path}")
-        print("Please place a 'test_paper.pdf' in the datasets folder.")
+        print("Please download 'Attention Is All You Need' and save it as 'test_paper.pdf'.")
         return
 
-    print(f"\nIngesting {test_paper_path.name} into Qdrant...")
+    print(f"\nIngesting {test_paper_path.name} into vector store...")
     adapter.ingest_test_paper(str(test_paper_path))
 
-    # Step 2: Prepare the queries
-    print("\nLoading test dataset...")
     raw_data = load_dataset()
 
-    prepared_data = {
-        "question": [],
-        "answer": [],
-        "contexts": [],
-        "ground_truth": []
-    }
+    # Run Both Modes using asyncio
+    df_dense = await run_evaluation_mode(adapter, raw_data, use_hybrid=False, mode_name="Dense Search")
+    df_hybrid = await run_evaluation_mode(adapter, raw_data, use_hybrid=True, mode_name="Hybrid Search")
 
-    # Step 3: Run pipeline queries to gather real contexts and generated answers
-    print("\nQuerying RAG Pipeline...")
-    samples = []
+    # Combine and save results
+    final_df = pd.concat([df_dense, df_hybrid], ignore_index=True)
 
-    for row in raw_data:
-        question = row["question"]
-        print(f"Asking: {question}")
-
-        response = adapter.query(question )
-
-        # Ragas 0.3+ Schema Requirements
-        sample = SingleTurnSample(
-            user_input=question,
-            response=response["answer"],
-            retrieved_contexts=response["contexts"],
-            reference=row["ground_truth"]
-        )
-        samples.append(sample)
-
-    # Step 4: Convert into Ragas Dataset and Evaluate
-    dataset = EvaluationDataset(samples = samples)
-
-    metrics = [
-        faithfulness,  # Checks if the answer hallucinates beyond contexts
-        answer_relevancy,  # Checks if answer is actually relevant to question
-        context_precision,  # Checks if contexts retrieved were highly relevant
-        context_recall  # Checks if retrieved contexts covered the ground truth
-    ]
-
-    print("\nEvaluating with Ragas (This may take a minute)...")
-    results = evaluate(
-        dataset=dataset,
-        metrics=metrics,
-        llm=llm,
-        experiment_name="papersense_eval"
-    )
-
-    print("\nEvaluation Results:")
-    print(results)
-
-    # Step 5: Save results to CSV for analysis
-    results_dir = Path(__file__).parent /"evals"/ "experiments"
+    results_dir = Path(__file__).parent /"evals" / "experiments"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = results_dir / "eval_results.csv"
-    df = results.to_pandas()
-    df.to_csv(csv_path, index=False)
+    csv_path = results_dir / "comparison_eval_results.csv"
+    final_df.to_csv(csv_path, index=False)
 
-    print(f"\nExperiment results successfully saved to: {csv_path.resolve()}")
+    print(f"\n✅ Experiment complete! Comparison results saved to: {csv_path.resolve()}")
+
+    # Print a quick summary of averages
+    print("\n--- Summary Averages ---")
+    summary = final_df.groupby("search_mode").mean(numeric_only=True)
+    print(summary)
 
 
 if __name__ == "__main__":
-    import asyncio
-
+    # Standard entry point for asyncio python scripts
     asyncio.run(main())

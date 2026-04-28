@@ -4,30 +4,42 @@ Text chunking service for splitting documents into semantic chunks
 from typing import List, Dict
 import re
 from loguru import logger
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class Chunker:
     """Intelligent text chunking for research papers"""
-    
+
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-    
+
+        # Initialize LangChain's Recursive Character Splitter
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            length_function=len,
+            # This hierarchy tries to split by double newlines first (paragraphs/math blocks),
+            # then single newlines, then spaces, and lastly by individual characters.
+            separators=["\n\n", "\n", " ", ""]
+        )
+
     def clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
-        # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
-        # Remove page numbers and headers/footers patterns
+        # Replace horizontal whitespace (tabs, multiple spaces) with a single space
+        text = re.sub(r'[ \t]+', ' ', text)
+        # Replace 3 or more newlines with just 2 newlines (preserves paragraphs & math blocks)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        # Remove standalone numbers flanked by newlines (common for page numbers)
         text = re.sub(r'\n\d+\n', '\n', text)
         return text.strip()
-    
+
     def detect_sections(self, text: str) -> List[Dict[str, str]]:
         """
         Detect common research paper sections
         Returns list of sections with their content
         """
         sections = []
-        
+
         # Common section headers in research papers
         section_patterns = [
             r'\n(Abstract|ABSTRACT)\s*\n',
@@ -39,7 +51,7 @@ class Chunker:
             r'\n(Conclusion|CONCLUSION|Conclusions)\s*\n',
             r'\n(References|REFERENCES)\s*\n',
         ]
-        
+
         # Find all section boundaries
         boundaries = []
         for pattern in section_patterns:
@@ -49,10 +61,10 @@ class Chunker:
                     'position': match.start(),
                     'title': match.group(1)
                 })
-        
+
         # Sort by position
         boundaries.sort(key=lambda x: x['position'])
-        
+
         # Extract sections
         for i, boundary in enumerate(boundaries):
             start = boundary['position']
@@ -61,37 +73,11 @@ class Chunker:
                 'title': boundary['title'],
                 'content': text[start:end].strip()
             })
-        
+
         return sections
-    
-    def chunk_by_sentences(self, text: str) -> List[str]:
-        """Split text into chunks while preserving sentence boundaries"""
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        
-        chunks = []
-        current_chunk = ""
-        
-        for sentence in sentences:
-            # If adding this sentence exceeds chunk_size, save current chunk
-            if len(current_chunk) + len(sentence) > self.chunk_size and current_chunk:
-                chunks.append(current_chunk.strip())
-                # Start new chunk with overlap
-                overlap_text = current_chunk[-self.chunk_overlap:] if len(current_chunk) > self.chunk_overlap else current_chunk
-                current_chunk = overlap_text + " " + sentence
-            else:
-                current_chunk += " " + sentence
-        
-        # Add the last chunk
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-        
-        return chunks
-    
+
     def chunk_text(self, text: str, metadata: Dict = None) -> List[Dict[str, any]]:
         """
-        Main chunking method that creates semantic chunks
-
         Args:
             text: Input text to chunk
             metadata: Optional metadata to attach to each chunk
@@ -111,9 +97,10 @@ class Chunker:
         chunk_id = 0
 
         if sections:
-            # Chunk each section separately
+            # Chunk each section separately using LangChain
             for section in sections:
-                section_chunks = self.chunk_by_sentences(section['content'])
+                # split_text returns a list of strings
+                section_chunks = self.text_splitter.split_text(section['content'])
                 for chunk_text in section_chunks:
                     chunks.append({
                         'chunk_id': chunk_id,
@@ -125,8 +112,8 @@ class Chunker:
                     })
                     chunk_id += 1
         else:
-            # No sections detected, chunk the entire text
-            text_chunks = self.chunk_by_sentences(text)
+            # No sections detected, chunk the entire text using LangChain
+            text_chunks = self.text_splitter.split_text(text)
             for chunk_text in text_chunks:
                 chunks.append({
                     'chunk_id': chunk_id,
@@ -149,14 +136,6 @@ class Chunker:
 
         Each table becomes a single chunk whose text is the Markdown (or CSV)
         representation so it can be embedded and retrieved.
-
-        Args:
-            tables: List of table dicts from Docling (keys: index, html, csv, markdown)
-            metadata: Optional metadata to attach
-            start_chunk_id: Starting chunk_id to continue numbering
-
-        Returns:
-            List of chunk dictionaries with content_type='table'
         """
         chunks = []
         chunk_id = start_chunk_id
@@ -194,14 +173,6 @@ class Chunker:
         Each image becomes a chunk whose text is the caption (used for
         embedding).  The base64 PNG data is stored in the chunk metadata so it
         can be forwarded to a multimodal LLM later.
-
-        Args:
-            images: List of image dicts from Docling (keys: base64_png, caption)
-            metadata: Optional metadata to attach
-            start_chunk_id: Starting chunk_id to continue numbering
-
-        Returns:
-            List of chunk dictionaries with content_type='image'
         """
         chunks = []
         chunk_id = start_chunk_id
@@ -222,4 +193,3 @@ class Chunker:
 
         logger.info(f"Created {len(chunks)} image chunks")
         return chunks
-

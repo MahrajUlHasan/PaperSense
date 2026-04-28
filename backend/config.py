@@ -33,7 +33,7 @@ class Settings(BaseSettings):
         description="Embedding provider: openai | langchain | gemma"
     )
     gemma_embedding_model: str = Field(
-        default="models/text-embedding-004",
+        default="gemini-embedding-2-preview",
         env="GEMMA_EMBEDDING_MODEL",
         description="Google GenAI / LangChain embedding model name"
     )
