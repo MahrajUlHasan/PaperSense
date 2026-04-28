@@ -11,7 +11,7 @@ import tempfile
 import os
 from typing import Dict, List, Optional
 
-import PyPDF2
+import pypdf as PyPDF2
 import pdfplumber
 from defusedxml.lxml import tostring
 from loguru import logger

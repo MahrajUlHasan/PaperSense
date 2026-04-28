@@ -256,6 +256,8 @@ class RAGPipeline:
             # Step 5: Record this Q&A turn in conversation memory
             self.conversation_memory.add_turn(question, result["answer"])
 
+            result["contexts"]=  [chunk["text"] for chunk in retrieved_chunks]
+
             logger.debug(f"Query processed successfully. Answer: {result['answer']}")
             return result
 

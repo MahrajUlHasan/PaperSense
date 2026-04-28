@@ -1,0 +1,4 @@
+question,ground_truth
+What is the main architecture proposed in this paper?,"The main architecture proposed is the Transformer, which is based solely on attention mechanisms, dispensing with recurrence and convolutions entirely."
+What are the advantages of self-attention according to the authors?,"Self-attention reduces computational complexity per layer, allows for more parallelization, and yields shorter path lengths between long-range dependencies in the network."
+Which optimizer was used for training the models?,The Adam optimizer was used with varying learning rates.
