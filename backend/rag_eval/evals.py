@@ -45,37 +45,54 @@ def load_dataset():
             "ground_truth": "It relies on Multi-Head Attention, which consists of several parallel Scaled Dot-Product Attention layers."
         },
         {
-            "question": "Why do the authors use a scaling factor of 1/sqrt(d_k) in the attention mechanism?",
-            "ground_truth": "To prevent the dot products from growing too large in magnitude, which would push the softmax function into regions where it has extremely small gradients."
-        },
-        {
-            "question": "How does the model inject information about the relative or absolute position of the tokens?",
-            "ground_truth": "By adding positional encodings to the input embeddings at the bottoms of the encoder and decoder stacks, using sine and cosine functions of different frequencies."
-        },
-        {
-            "question": "What optimizer is used to train the Transformer model?",
-            "ground_truth": "The Adam optimizer with specific parameters (beta1=0.9, beta2=0.98, eps=10^-9) and a custom learning rate schedule."
-        },
-        {
-            "question": "What regularization techniques are employed during training?",
-            "ground_truth": "Residual dropout (applied to the output of each sub-layer and the sums of embeddings and positional encodings) and label smoothing."
-        },
-        {
-            "question": "How many layers (N) are in the encoder and decoder stacks of the base model?",
-            "ground_truth": "Both the encoder and decoder are composed of a stack of N=6 identical layers."
-        },
-        {
-            "question": "What is the BLEU score achieved by the Transformer (big) model on the English-to-German translation task?",
-            "ground_truth": "It achieved a BLEU score of 28.4 on the WMT 2014 English-to-German translation task."
-        },
-        {
             "question": "What are the advantages of self-attention over recurrent layers according to the paper?",
             "ground_truth": "Self-attention reduces the total computational complexity per layer, allows for more parallelizable computation, and shortens the path length between long-range dependencies."
         },
         {
             "question": "What hardware was used to train the models?",
             "ground_truth": "The models were trained on one machine with 8 NVIDIA P100 GPUs."
+        },
+        {
+            "question": "How does the Transformer architecture differ from previous dominant sequence models?",
+            "ground_truth": "The Transformer abandons complex recurrent and convolutional neural networks, relying entirely on attention mechanisms to draw global dependencies between input and output[cite: 5]."
+        },
+        {
+            "question": "What is self-attention?",
+            "ground_truth": "Self-attention, also called intra-attention, is a mechanism that relates different positions of a single sequence to compute a representation of that entire sequence[cite: 5]."
+        },
+        {
+            "question": "In general terms, how does an attention function work?",
+            "ground_truth": "An attention function maps a query and a set of key-value pairs to an output, which is calculated as a weighted sum of the values[cite: 5]."
+        },
+        {
+            "question": "What are the two sub-layers present in each layer of the encoder?",
+            "ground_truth": "The first sub-layer is a multi-head self-attention mechanism, and the second is a simple, position-wise fully connected feed-forward network[cite: 5]."
+        },
+        {
+            "question": "What structural components immediately follow each sub-layer in the encoder and decoder?",
+            "ground_truth": "Each sub-layer is wrapped with a residual connection and is immediately followed by layer normalization[cite: 5]."
+        },
+        {
+            "question": "What additional sub-layer is inserted into the decoder that is not present in the encoder?",
+            "ground_truth": "The decoder contains a third sub-layer that performs multi-head attention over the output of the encoder stack[cite: 5]."
+        },
+        {
+            "question": "Why did the authors choose to use sinusoidal functions for positional encodings rather than learned embeddings?",
+            "ground_truth": "They hypothesized that sinusoidal functions would allow the model to easily learn to attend by relative positions and help the model extrapolate to sequence lengths longer than those encountered during training[cite: 5]."
+        },
+        {
+            "question": "What type of encoding was used to prepare the sentences in the English-German translation dataset?",
+            "ground_truth": "The sentences were encoded using byte-pair encoding with a shared source-target vocabulary[cite: 5]."
+        },
+        {
+            "question": "How did the authors organize the sentence pairs during the training process to handle different lengths?",
+            "ground_truth": "Sentence pairs were batched together based on their approximate sequence length[cite: 5]."
+        },
+        {
+            "question": "What specific regularization technique was used that makes the model more unsure of its predictions but ultimately improves accuracy and translation scores?",
+            "ground_truth": "The authors employed label smoothing during training[cite: 5]."
         }
+
     ]
 
 

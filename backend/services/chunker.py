@@ -4,8 +4,7 @@ Text chunking service for splitting documents into semantic chunks
 from typing import List, Dict
 import re
 from loguru import logger
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 class Chunker:
     """Intelligent text chunking for research papers"""
@@ -15,13 +14,17 @@ class Chunker:
         self.chunk_overlap = chunk_overlap
 
         # Initialize LangChain's Recursive Character Splitter
-        self.text_splitter = RecursiveCharacterTextSplitter(
+        # self.text_splitter = RecursiveCharacterTextSplitter(
+        #     chunk_size=self.chunk_size,
+        #     chunk_overlap=self.chunk_overlap,
+        #     length_function=len,
+        #
+        #     separators=["\n\n", "\n", " ", ""]
+        # )
+        self.text_splitter = RecursiveCharacterTextSplitter.from_language(
+            language=Language.MARKDOWN,
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
-            length_function=len,
-            # This hierarchy tries to split by double newlines first (paragraphs/math blocks),
-            # then single newlines, then spaces, and lastly by individual characters.
-            separators=["\n\n", "\n", " ", ""]
         )
 
     def clean_text(self, text: str) -> str:
