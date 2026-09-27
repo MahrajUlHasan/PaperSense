@@ -112,3 +112,15 @@ frontend/coverage/
 
 # JetBrains IDE settings (any folder)
 .idea/
+
+
+# --- PaperSense v2 runtime files ---
+backend/.venv/
+backend/data/
+backend/uploads/
+backend/context.md
+**/logs/
+**/.pytest_cache/
+
+./backend/requirements1.txt
+./backend/reqirements_old.txt

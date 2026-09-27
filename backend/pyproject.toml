@@ -1,0 +1,38 @@
+[project]
+name = "papersense-backend"
+version = "2.0.0"
+description = "PaperSense backend: retrieval-augmented question answering over research papers"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "docling==2.80.0",
+    "docling-core==2.70.1",
+    "fastapi==0.133.0",
+    "fastembed==0.8.0",
+    "google-genai==1.68.0",
+    "loguru==0.7.3",
+    "onnxruntime==1.24.4",
+    "openai==2.32.0",
+    "pillow",
+    "pydantic==2.12.5",
+    "pydantic-settings==2.13.1",
+    "pypdf==6.10.2",
+    "pypdfium2==5.5.0",
+    "python-multipart==0.0.22",
+    "qdrant-client==1.17.0",
+    "rapidocr==3.7.0",
+    "uvicorn[standard]==0.41.0",
+    # --- legacy: only needed by the v1 code ---
+    "defusedxml",
+    "langchain-text-splitters",
+    "pdfplumber",
+]
+
+[dependency-groups]
+dev = [
+    "httpx",
+    "psutil",
+    "pytest",
+]
+
+[tool.uv]
+package = false
