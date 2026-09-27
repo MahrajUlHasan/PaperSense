@@ -22,7 +22,9 @@ class VectorStore:
 
     def __init__(self):
         # Initialize Qdrant client
-        if settings.qdrant_api_key:
+        if settings.qdrant_url:
+            self.client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key, timeout=60)
+        elif settings.qdrant_api_key:
             self.client = QdrantClient(
                 host=settings.qdrant_host,
                 port=settings.qdrant_port,

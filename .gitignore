@@ -125,4 +125,5 @@ backend/context.md
 ./backend/requirements1.txt
 ./backend/reqirements_old.txt
 ./backend/Scripts
-./docs
+../docs
+./backend/Scripts

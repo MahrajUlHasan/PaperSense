@@ -53,7 +53,11 @@ class Settings(BaseSettings):
     # Vector Search Configuration
     top_k_results: int = Field(default=5, env="TOP_K_RESULTS")
     similarity_threshold: float = Field(default=0.3, env="SIMILARITY_THRESHOLD")
-    
+
+    # ── v2: Qdrant Cloud ───────────────────────────────────────
+    qdrant_url: Optional[str] = Field(default=None, env="QDRANT_URL")
+    qdrant_collection: str = Field(default="papersense_v2_dev", env="QDRANT_COLLECTION")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
