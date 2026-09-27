@@ -109,4 +109,6 @@ frontend/coverage/
 
 ./frontend/.swc
 ./frontend/.next
-.idea
+
+# JetBrains IDE settings (any folder)
+.idea/
