@@ -122,8 +122,10 @@ backend/context.md
 **/logs/
 **/.pytest_cache/
 
-./backend/requirements1.txt
-./backend/reqirements_old.txt
-./backend/Scripts
-../docs
-./backend/Scripts
+# --- Local-only files: never committed, even with `git add --all` ---
+# (no "./" prefix: git patterns can't start with it; a leading "/" means "from the repo root")
+/docs/
+/backend/scripts/
+/backend/Scripts/
+/backend/requirements1.txt
+/backend/requirements_old.txt
