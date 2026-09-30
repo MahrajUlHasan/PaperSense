@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     # ── v2: Qdrant Cloud ───────────────────────────────────────
     qdrant_url: Optional[str] = Field(default=None, env="QDRANT_URL")
     qdrant_collection: str = Field(default="papersense_v2_dev", env="QDRANT_COLLECTION")
+    # ── v2: storage & parsing ──────────────────────────────────
+    data_dir: str = Field(default="data", env="DATA_DIR")
+    ocr_mode: str = Field(default="off", env="OCR_MODE")            # off | auto | on
+    formula_mode: str = Field(default="off", env="FORMULA_MODE")    # off | local | gemini
+    picture_scale: float = Field(default=2.0, env="PICTURE_SCALE")
+    docling_threads: int = Field(default=4, env="DOCLING_THREADS")
+    min_page_coverage: float = Field(default=0.5, env="MIN_PAGE_COVERAGE")
 
     class Config:
         env_file = ".env"
