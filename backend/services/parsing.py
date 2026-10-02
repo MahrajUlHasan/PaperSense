@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import ConversionStatus, DocumentStream, InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types.doc import DoclingDocument, TableItem, TextItem
+from docling_core.types.doc import DoclingDocument, FormulaItem, TableItem, TextItem
 from loguru import logger
 from pypdf import PdfReader
 
@@ -70,6 +70,15 @@ def docling_chars_per_page(doc: DoclingDocument) -> dict[int, int]:
             counts[page] = counts.get(page, 0) + len(item.text or item.orig or "")
     return counts
 
+def formula_stats(doc: DoclingDocument) -> tuple[int, int]:
+    found = decoded = 0
+    for item, _level in doc.iterate_items():
+        if isinstance(item, FormulaItem):
+            found += 1
+            decoded += bool((item.text or "").strip())
+    return found, decoded
+
+
 
 class PDFParser:
     def __init__(self, ocr_mode: str | None = None, formula_mode: str | None = None):
@@ -84,13 +93,12 @@ class PDFParser:
             num_threads=settings.docling_threads, device=AcceleratorDevice.CPU
         )
 
-        opts.do_ocr = False
-        # Formulas (Phase B5)
-        opts.do_formula_enrichment = False
-        # Figures (Phase B6)
+        opts.do_ocr = do_ocr
+        if do_ocr:
+            opts.ocr_options = RapidOcrOptions(backend="onnxruntime")
+        opts.do_formula_enrichment = self.formula_mode == "local"
         opts.generate_picture_images = False
-        # pypdfium backend: the default docling-parse backend crashed with std::bad_alloc
-        # on some pages and stopped the whole pipeline early (A8/B1 finding).
+
         return DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=opts, backend=PyPdfiumDocumentBackend)
@@ -103,7 +111,11 @@ class PDFParser:
         return self._converters[do_ocr]
 
     def _should_ocr(self, page_text: dict[int, str]) -> bool:
-        return False  # replaced in Phase B4
+        if self.ocr_mode == "on":
+            return True
+        if self.ocr_mode == "auto":
+            return any(len(text) < 20 for text in page_text.values())
+        return False
 
     def parse(self, pdf_bytes: bytes, filename: str) -> ParseResult:
         start = time.perf_counter()
