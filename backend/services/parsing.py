@@ -12,11 +12,12 @@ from docling.datamodel.accelerator_options import AcceleratorDevice, Accelerator
 from docling.datamodel.base_models import ConversionStatus, DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types.doc import DoclingDocument, FormulaItem, TableItem, TextItem
+from docling_core.types.doc import DoclingDocument, FormulaItem, PictureItem, TableItem, TextItem
 from loguru import logger
 from pypdf import PdfReader
 
 from config import settings
+from services.geometry import Box, item_boxes
 
 
 class ParseError(RuntimeError):
@@ -97,7 +98,8 @@ class PDFParser:
         if do_ocr:
             opts.ocr_options = RapidOcrOptions(backend="onnxruntime")
         opts.do_formula_enrichment = self.formula_mode == "local"
-        opts.generate_picture_images = False
+        opts.generate_picture_images = True
+        opts.images_scale = settings.picture_scale
 
         return DocumentConverter(
             format_options={
@@ -159,3 +161,50 @@ class PDFParser:
                 f"coverage {parsed.coverage:.0%}"
             )
         return parsed
+
+
+MIN_FIGURE_PX = 120
+
+
+@dataclass
+class FigureImage:
+    """A figure cropped from the PDF.
+
+    Attributes:
+        index: 1-based position in reading order.
+        self_ref: Docling reference, e.g. "#/pictures/3".
+        caption: The figure's caption text from the paper.
+        boxes: Where the figure sits on its page(s).
+        image: The cropped picture (PIL.Image.Image).
+    """
+
+    index: int
+    self_ref: str
+    caption: str
+    boxes: list[Box]
+    image: object
+
+
+def extract_figures(doc: DoclingDocument) -> list[FigureImage]:
+    """Figures with their real captions.
+
+    Images whose shorter side is under MIN_FIGURE_PX pixels (at picture_scale=2) are
+    logos or icons and are skipped.
+    """
+    figures: list[FigureImage] = []
+    for item, _level in doc.iterate_items():
+        if not isinstance(item, PictureItem):
+            continue
+        image = item.get_image(doc)
+        if image is None or min(image.size) < MIN_FIGURE_PX:
+            continue
+        figures.append(
+            FigureImage(
+                index=len(figures) + 1,
+                self_ref=item.self_ref,
+                caption=item.caption_text(doc).strip(),
+                boxes=item_boxes(item, doc),
+                image=image,
+            )
+        )
+    return figures
