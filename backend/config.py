@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     picture_scale: float = Field(default=2.0, env="PICTURE_SCALE")
     docling_threads: int = Field(default=4, env="DOCLING_THREADS")
     min_page_coverage: float = Field(default=0.5, env="MIN_PAGE_COVERAGE")
+    dense_model: str = Field(default="BAAI/bge-base-en-v1.5", env="DENSE_MODEL")
+    chunk_max_tokens: int = Field(default=400, env="CHUNK_MAX_TOKENS")
 
     class Config:
         env_file = ".env"
