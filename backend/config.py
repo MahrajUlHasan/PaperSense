@@ -1,78 +1,56 @@
-"""
-Configuration management for the Smart Research Paper Analyzer
-"""
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from typing import Optional
+"""PaperSense backend settings, read from backend/.env (see .env.example)."""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal, Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables"""
-    
-    # API Keys
-    google_api_key: str = Field(..., env="GOOGLE_API_KEY")
-    openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
-    HF_TOKEN: Optional[str] = Field(None, env="HF_TOKEN")
-    
-    # Qdrant Configuration
-    qdrant_host: str = Field(default="localhost", env="QDRANT_HOST")
-    qdrant_port: int = Field(default=6333, env="QDRANT_PORT")
-    qdrant_api_key: Optional[str] = Field(default=None, env="QDRANT_API_KEY")
-    qdrant_collection_name: str = Field(default="research_papers", env="QDRANT_COLLECTION_NAME")
-    
-    # Application Settings
-    app_name: str = Field(default="Smart Research Paper Analyzer", env="APP_NAME")
-    app_version: str = Field(default="1.0.0", env="APP_VERSION")
-    debug: bool = Field(default=True, env="DEBUG")
-    
-    # Model Configuration
-    embedding_model: str = Field(default="text-embedding-3-small", env="EMBEDDING_MODEL")
-    embedding_provider: str = Field(
-        default="openai",
-        env="EMBEDDING_PROVIDER",
-        description="Embedding provider: openai | langchain | gemma"
+    """All settings, each overridable by an environment variable of the same name.
+
+    Keys in .env that no setting uses (for example from older versions) are ignored.
+    `hf_token` is optional and only makes model downloads from Hugging Face faster.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=BACKEND_DIR / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
-    gemma_embedding_model: str = Field(
-        default="gemini-embedding-2-preview",
-        env="GEMMA_EMBEDDING_MODEL",
-        description="Google GenAI / LangChain embedding model name"
-    )
-    embedding_dimension: int = Field(
-        default=1536,
-        env="EMBEDDING_DIMENSION",
-        description="Dimension of embedding vectors (1536 for OpenAI, 768 for Gemma/LangChain)"
-    )
-    gemini_model: str = Field(default="gemini-pro", env="GEMINI_MODEL")
-    chunk_size: int = Field(default=1000, env="CHUNK_SIZE")
-    chunk_overlap: int = Field(default=200, env="CHUNK_OVERLAP")
-    
-    # Server Configuration
-    host: str = Field(default="0.0.0.0", env="HOST")
-    port: int = Field(default=8000, env="PORT")
-    
-    # Vector Search Configuration
-    top_k_results: int = Field(default=5, env="TOP_K_RESULTS")
-    similarity_threshold: float = Field(default=0.3, env="SIMILARITY_THRESHOLD")
 
-    # ── v2: Qdrant Cloud ───────────────────────────────────────
-    qdrant_url: Optional[str] = Field(default=None, env="QDRANT_URL")
-    qdrant_collection: str = Field(default="papersense_v2_dev", env="QDRANT_COLLECTION")
-    # ── v2: storage & parsing ──────────────────────────────────
-    data_dir: str = Field(default="data", env="DATA_DIR")
-    ocr_mode: str = Field(default="off", env="OCR_MODE")            # off | auto | on
-    formula_mode: str = Field(default="local", env="FORMULA_MODE")  # off | local | gemini
-    picture_scale: float = Field(default=2.0, env="PICTURE_SCALE")
-    docling_threads: int = Field(default=4, env="DOCLING_THREADS")
-    min_page_coverage: float = Field(default=0.5, env="MIN_PAGE_COVERAGE")
-    dense_model: str = Field(default="BAAI/bge-base-en-v1.5", env="DENSE_MODEL")
-    chunk_max_tokens: int = Field(default=400, env="CHUNK_MAX_TOKENS")
+    app_name: str = "PaperSense"
+    debug: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8000
+    cors_origins: str = "http://localhost:3000"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    qdrant_collection: str = "papersense_v2_dev"
+
+    data_dir: Path = BACKEND_DIR / "data"
+
+    ocr_mode: Literal["off", "auto", "on"] = "off"
+    formula_mode: Literal["off", "local", "gemini"] = "local"
+    picture_scale: float = 2.0
+    docling_threads: int = 4
+    min_page_coverage: float = 0.5
+
+    dense_model: str = "BAAI/bge-base-en-v1.5"
+    chunk_max_tokens: int = 400
+    top_k: int = 6
+    prefetch_limit: int = 40
+
+    hf_token: Optional[str] = None
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
-# Global settings instance
 settings = Settings()
-
