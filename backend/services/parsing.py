@@ -208,3 +208,35 @@ def extract_figures(doc: DoclingDocument) -> list[FigureImage]:
             )
         )
     return figures
+
+FORMULA_RENDER_SCALE = 3.0
+
+
+def formula_crops(pdf_bytes: bytes, doc: DoclingDocument, only_missing: bool = True) -> list[tuple[FormulaItem, object]]:
+    """Sharp image crops of formulas, rendered straight from the PDF (no Docling page images needed)."""
+    import pypdfium2 as pdfium
+
+    crops: list[tuple[FormulaItem, object]] = []
+    rendered: dict[int, object] = {}
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    try:
+        for item, _level in doc.iterate_items():
+            if not isinstance(item, FormulaItem) or not item.prov:
+                continue
+            if only_missing and (item.text or "").strip():
+                continue
+            prov = item.prov[0]
+            page = doc.pages.get(prov.page_no)
+            if page is None or prov.page_no > len(pdf):
+                continue
+            if prov.page_no not in rendered:
+                rendered[prov.page_no] = pdf[prov.page_no - 1].render(scale=FORMULA_RENDER_SCALE).to_pil()
+            bb = prov.bbox.to_top_left_origin(page_height=page.size.height)
+            pad, s = 3, FORMULA_RENDER_SCALE
+            box = (int(max(0, bb.l - pad) * s), int(max(0, bb.t - pad) * s), int((bb.r + pad) * s), int((bb.b + pad) * s))
+            if box[2] - box[0] < 10 or box[3] - box[1] < 10:
+                continue
+            crops.append((item, rendered[prov.page_no].crop(box)))
+    finally:
+        pdf.close()
+    return crops

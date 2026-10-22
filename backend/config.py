@@ -14,6 +14,13 @@ class Settings(BaseSettings):
 
     Keys in .env that no setting uses (for example from older versions) are ignored.
     `hf_token` is optional and only makes model downloads from Hugging Face faster.
+
+    LLM providers: visitors bring their own keys (Settings → API keys in the UI).
+    `allow_server_key` + `server_gemini_api_key` are for LOCAL DEVELOPMENT ONLY: they use
+    your own key when a request has none. Never enable them on a public deployment.
+
+    `gemini_thinking_budget`: Gemini 2.5 "thinking" tokens count against the output limit.
+    None = model default, 0 = off (Flash only), e.g. 1024 = small budget.
     """
 
     model_config = SettingsConfigDict(
@@ -45,6 +52,19 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = 400
     top_k: int = 6
     prefetch_limit: int = 40
+
+    default_provider: Literal["gemini", "groq", "openrouter"] = "gemini"
+    gemini_model: str = "gemini-3.5-flash"
+    groq_model: str = "llama-3.3-70b-versatile"
+    openrouter_model: str = "google/gemma-4-31b-it:free"
+    vision_model: str = "gemini-3.5-flash-lite"
+    vision_rpm: int = 8
+    rewrite_followups: bool = True
+    llm_max_output_tokens: int = 4096
+    gemini_thinking_budget: Optional[int] = None
+
+    allow_server_key: bool = False
+    server_gemini_api_key: Optional[str] = None
 
     hf_token: Optional[str] = None
 

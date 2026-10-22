@@ -1,7 +1,7 @@
 """Pydantic models for the v2 API."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -74,3 +74,85 @@ class ContextBlockOut(BaseModel):
 class SearchResponse(BaseModel):
     hits: list[SearchHit]
     blocks: list[ContextBlockOut] = []
+
+
+class ProviderInfo(BaseModel):
+    id: str
+    name: str
+    default_model: str
+    supports_images: bool
+    key_url: str
+
+
+class ProvidersResponse(BaseModel):
+    default_provider: str
+    providers: list[ProviderInfo]
+    server_key_available: bool
+
+
+class KeyTestRequest(BaseModel):
+    provider: str
+    api_key: str
+    model: str | None = None
+
+
+class KeyTestResponse(BaseModel):
+    ok: bool
+    message: str
+    code: str | None = None
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    document_ids: list[str] | None = None
+    top_k: int | None = Field(default=None, ge=1, le=12)
+    use_hybrid: bool = True
+
+
+class Citation(BaseModel):
+    index: int
+    document_id: str
+    filename: str
+    section: str
+    content_type: str
+    pages: list[int]
+    page: int | None = None
+    boxes: list[dict]
+    relevance: float
+    text: str
+    figure_index: int | None = None
+
+
+class QueryResponse(BaseModel):
+    success: bool = True
+    question: str
+    answer: str
+    citations: list[Citation]
+    search_query: str
+    contexts: list[str] = []
+
+
+class ResearchRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+
+
+class ResearchResponse(BaseModel):
+    topic: str = ""
+    description: str = ""
+    breakdown: str = ""
+    updated_at: str | None = None
+
+
+class ScoreResponse(BaseModel):
+    document_id: str
+    score: int
+    explanation: str
+
+
+class AnalysisResponse(BaseModel):
+    document_id: str
+    summary: str
+    key_findings: list[str]
+    methodology: str
+    limitations: list[str]
