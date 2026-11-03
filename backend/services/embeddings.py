@@ -10,7 +10,7 @@ from loguru import logger
 
 from config import settings
 
-
+exit
 class EmbeddingService:
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.dense_model

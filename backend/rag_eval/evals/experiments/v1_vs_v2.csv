@@ -1,0 +1,5 @@
+﻿mode,metric,questions,v1,v2,change
+dense,faithfulness,1,0.6667,1.0,0.3333
+dense,answer_relevancy,1,0.9836,0.9446,-0.039
+dense,context_precision,1,0.0,1.0,1.0
+dense,context_recall,1,0.0,0.0,0.0

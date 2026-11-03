@@ -1,4 +1,7 @@
-"""Groq and OpenRouter: both speak the OpenAI chat API (text only here)."""
+"""Providers that speak the OpenAI chat API (text only here).
+
+Groq and OpenRouter are offered in the app. Mistral is used only as the evaluation judge.
+"""
 from __future__ import annotations
 
 import openai
@@ -9,8 +12,9 @@ from services.llm.errors import ProviderError
 BASE_URLS = {
     "groq": "https://api.groq.com/openai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
+    "mistral": "https://api.mistral.ai/v1",
 }
-DISPLAY = {"groq": "Groq", "openrouter": "OpenRouter"}
+DISPLAY = {"groq": "Groq", "openrouter": "OpenRouter", "mistral": "Mistral"}
 
 
 def map_openai_error(err: Exception, provider: str) -> ProviderError:

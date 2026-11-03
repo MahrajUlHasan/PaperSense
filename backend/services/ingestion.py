@@ -17,7 +17,7 @@ from config import settings
 from services.chunking import Chunker
 from services.embeddings import EmbeddingService
 from services.llm import ProviderError
-from services.parsing import PDFParser, extract_figures, formula_crops
+from services.parsing import PDFParser, extract_figures, formula_crops, formula_stats
 from services.qdrant_store import QdrantStore
 from services.registry import DocumentRegistry
 from services.storage import DocumentStorage
@@ -93,6 +93,7 @@ class IngestionService:
 
             if not gemini_key:
                 notes.append("No Gemini key: figures weren't described and formulas weren't read.")
+            _found, formulas_decoded = formula_stats(parsed.doc)
             stats = {
                 "title": title,
                 "chunks": len(records),
@@ -100,6 +101,7 @@ class IngestionService:
                 "figures": len(figures),
                 "figures_described": len(descriptions),
                 "formulas": sum(len(r.formulas) for r in records),
+                "formulas_decoded": formulas_decoded,
                 "formulas_read": formulas_read,
                 "coverage": round(parsed.coverage, 3),
                 "low_coverage_pages": parsed.low_coverage_pages,

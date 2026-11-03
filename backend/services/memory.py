@@ -1,4 +1,4 @@
-updated o"""Short-term chat memory per (workspace, session), kept in RAM (cleared on restart)."""
+"""Short-term chat memory per (workspace, session), kept in RAM (cleared on restart)."""
 from __future__ import annotations
 
 import threading

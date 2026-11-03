@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     `gemini_thinking_budget`: Gemini 2.5 "thinking" tokens count against the output limit.
     None = model default, 0 = off (Flash only), e.g. 1024 = small budget.
+
+    `mistral_api_key` is used only by the RAGAS evaluation (rag_eval/), as the judge's key.
     """
 
     model_config = SettingsConfigDict(
@@ -67,6 +69,7 @@ class Settings(BaseSettings):
     server_gemini_api_key: Optional[str] = None
 
     hf_token: Optional[str] = None
+    mistral_api_key: Optional[str] = None
 
     @property
     def cors_origin_list(self) -> list[str]:

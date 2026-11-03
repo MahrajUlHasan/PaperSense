@@ -1,35 +1,211 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@import "tw-animate-css";
 
-@theme {
-  --color-primary: #3b82f6;
-  --color-primary-content: #ffffff;
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-shelf: var(--shelf);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-ui), system-ui, sans-serif;
+  --font-serif: var(--font-reading), Georgia, serif;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
 }
 
-html,
-body {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
+:root {
+  --radius: 6px;
+  --background: #f7f8fa;
+  --foreground: #1c2541;
+  --card: #ffffff;
+  --card-foreground: #1c2541;
+  --popover: #ffffff;
+  --popover-foreground: #1c2541;
+  --primary: #1c2541;
+  --primary-foreground: #f7f8fa;
+  --secondary: #e9edf3;
+  --secondary-foreground: #1c2541;
+  --muted: #eef1f5;
+  --muted-foreground: #5b6475;
+  --accent: #e9edf3;
+  --accent-foreground: #1c2541;
+  --destructive: #b42318;
+  --success: #1f7a4d;
+  --border: #d9dee6;
+  --input: #cdd3dd;
+  --ring: #3d5a99;
+  --highlight: #ffe14d;
+  --highlight-foreground: #1c2541;
+  --highlight-wash: rgb(255 214 0 / 0.42);
+  --shelf: #eef1f5;
+  --chart-1: #1c2541;
+  --chart-2: #3d5a99;
+  --chart-3: #5b6475;
+  --chart-4: #ffe14d;
+  --chart-5: #b42318;
+  --sidebar: #eef1f5;
+  --sidebar-foreground: #1c2541;
+  --sidebar-primary: #1c2541;
+  --sidebar-primary-foreground: #f7f8fa;
+  --sidebar-accent: #e9edf3;
+  --sidebar-accent-foreground: #1c2541;
+  --sidebar-border: #d9dee6;
+  --sidebar-ring: #3d5a99;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: oklch(0.7 0 0);
-  border-radius: 3px;
+.dark {
+  --background: #121826;
+  --foreground: #e6e9ef;
+  --card: #1a2233;
+  --card-foreground: #e6e9ef;
+  --popover: #1a2233;
+  --popover-foreground: #e6e9ef;
+  --primary: #e6e9ef;
+  --primary-foreground: #121826;
+  --secondary: #232c3f;
+  --secondary-foreground: #e6e9ef;
+  --muted: #1a2233;
+  --muted-foreground: #9aa3b2;
+  --accent: #232c3f;
+  --accent-foreground: #e6e9ef;
+  --destructive: #f04438;
+  --success: #5bc48a;
+  --border: #2a3447;
+  --input: #33405a;
+  --ring: #8fa8dc;
+  --highlight: #e8c547;
+  --highlight-foreground: #121826;
+  --highlight-wash: rgb(255 214 0 / 0.42);
+  --shelf: #161d2b;
+  --chart-1: #e6e9ef;
+  --chart-2: #8fa8dc;
+  --chart-3: #9aa3b2;
+  --chart-4: #e8c547;
+  --chart-5: #f04438;
+  --sidebar: #161d2b;
+  --sidebar-foreground: #e6e9ef;
+  --sidebar-primary: #e6e9ef;
+  --sidebar-primary-foreground: #121826;
+  --sidebar-accent: #232c3f;
+  --sidebar-accent-foreground: #e6e9ef;
+  --sidebar-border: #2a3447;
+  --sidebar-ring: #8fa8dc;
 }
 
-/* Slide animations */
-@keyframes slide-in-right {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
 }
-.animate-slide-in-right {
-  animation: slide-in-right 0.2s ease-out;
+
+/* Custom classes live in the components layer, so utilities such as text-sm can still override them. */
+@layer components {
+  /* Answers and other long-form text. */
+  .answer-prose {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    max-width: 68ch;
+    overflow-wrap: anywhere;
+  }
+  .answer-prose > :last-child { margin-bottom: 0; }
+  .answer-prose p, .answer-prose ul, .answer-prose ol, .answer-prose pre, .answer-prose blockquote { margin: 0 0 0.85em; }
+  .answer-prose h1, .answer-prose h2, .answer-prose h3, .answer-prose h4 { font-weight: 600; line-height: 1.3; margin: 1.1em 0 0.4em; }
+  .answer-prose h1 { font-size: 1.3em; }
+  .answer-prose h2 { font-size: 1.18em; }
+  .answer-prose h3, .answer-prose h4 { font-size: 1.05em; }
+  .answer-prose ul { list-style: disc; padding-left: 1.4em; }
+  .answer-prose ol { list-style: decimal; padding-left: 1.4em; }
+  .answer-prose li { margin: 0.2em 0; }
+  .answer-prose a { text-decoration: underline; text-underline-offset: 3px; }
+  .answer-prose strong { font-weight: 650; }
+  .answer-prose code { font-size: 0.88em; background: var(--muted); padding: 0.1em 0.3em; border-radius: 4px; }
+  .answer-prose pre { overflow-x: auto; background: var(--muted); padding: 0.8em 1em; border-radius: 6px; }
+  .answer-prose pre code { background: none; padding: 0; }
+  .answer-prose blockquote { border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }
+  .answer-prose .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.3em 0; margin: 0.4em 0 0.9em; }
+  .answer-prose .table-wrap { overflow-x: auto; margin: 0 0 1em; }
+  .answer-prose table { border-collapse: collapse; font-family: var(--font-sans); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .answer-prose th, .answer-prose td { border-bottom: 1px solid var(--border); padding: 0.4em 0.8em; text-align: left; vertical-align: top; }
+  .answer-prose th { font-weight: 600; border-bottom-width: 2px; }
+
+  /* The highlighter mark on citation numbers. */
+  .cite-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    height: 1.3em;
+    padding: 0 0.3em;
+    margin: 0 0.12em;
+    vertical-align: 0.12em;
+    font-family: var(--font-sans);
+    font-size: 0.72em;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--highlight-foreground);
+    background: var(--highlight);
+    border-radius: 2px 5px 3px 4px;
+    transform: skewX(-6deg);
+    cursor: pointer;
+  }
+  .cite-chip:hover { filter: brightness(0.94); }
+  .cite-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  /* The same mark on the PDF page, drawn like a marker stroke. */
+  .pdf-highlight {
+    position: absolute;
+    background: var(--highlight-wash);
+    mix-blend-mode: multiply;
+    border-radius: 2px 4px 3px 2px;
+    transform-origin: left center;
+    animation: marker-stroke 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  mark.pdf-text-hit { background: var(--highlight-wash); color: inherit; border-radius: 2px; }
+}
+
+@keyframes marker-stroke {
+  from { transform: scaleX(0); opacity: 0.6; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-highlight { animation: none; }
 }

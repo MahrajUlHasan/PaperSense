@@ -1,0 +1,3 @@
+﻿mode,category,questions,faithfulness,answer_relevancy,context_precision,context_recall,avg_retrieval_seconds,avg_generation_seconds,avg_answer_seconds,avg_judge_seconds,total_answer_seconds,total_judge_seconds,total_run_seconds,answer_model,judge_model
+dense,all,1,1.0,0.9446,1.0,0.0,0.093,5.376,5.469,52.7,5.5,52.7,58.2,gemini-3.5-flash-lite,gemini-3.1-flash-lite
+dense,text,1,1.0,0.9446,1.0,0.0,0.093,5.376,5.469,52.7,5.5,52.7,58.2,gemini-3.5-flash-lite,gemini-3.1-flash-lite

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+import httpx
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
@@ -70,10 +71,14 @@ class GeminiProvider(LLMProvider):
                               max_output_tokens=max_output_tokens, json_mode=json_mode)
 
         def call():
+            """One request. A dropped connection or timeout counts as "busy", so it is retried."""
             try:
                 return self._client.models.generate_content(model=self.model, contents=contents, config=config)
             except genai_errors.APIError as err:
                 raise map_gemini_error(err) from None
+            except httpx.TransportError:
+                raise ProviderError("Couldn't reach Gemini. Please try again shortly.",
+                                    kind="unavailable", provider="gemini") from None
 
         response = call_with_retries(call)
         text = (response.text or "").strip()

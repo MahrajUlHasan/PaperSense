@@ -1,211 +1,358 @@
+"""RAGAS evaluation of PaperSense v2: dense vs hybrid retrieval on "Attention Is All You Need".
+
+Run from the backend folder:
+
+    uv run --group eval python rag_eval/evals.py
+
+Steps:
+1. Ingest evals/datasets/test_paper.pdf with the v2 pipeline into the evaluation workspace
+   (reused on later runs; --reingest does it again) and report the ingestion metrics.
+2. Answer every question in evals/datasets/eval_dataset.csv with dense and with hybrid retrieval.
+3. Score each answer with RAGAS (faithfulness, answer relevancy, context precision, context
+   recall) using a free judge (see judge.py).
+4. Write the results to evals/experiments/ (see write_outputs) and compare them with v1.
+
+Answers use gemini-3.5-flash-lite by default: the app's default gemini-3.5-flash has a free
+quota of about 20 requests a day, too few for a run. The judge is gemini-3.1-flash-lite, which
+has a daily quota of its own (about 500 requests; a full run needs about 440). With
+--judge-provider mistral it is mistral-medium-latest (needs MISTRAL_API_KEY and a Mistral plan
+that allows that model).
+
+Progress is saved after every question, so running the command again continues where it
+stopped (for example after a daily quota ran out); --fresh starts over. Switching the judge
+re-scores the saved answers without generating them again. Keys are read from backend/.env
+(SERVER_GEMINI_API_KEY, MISTRAL_API_KEY) and are never printed.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import csv
+import json
+import math
 import os
 import sys
-import asyncio
+import time
 from pathlib import Path
-import pandas as pd
+from statistics import mean
 
-from openai import AsyncOpenAI
-from ragas.llms import llm_factory
-from ragas.embeddings import embedding_factory
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
 
-# Import metric classes directly for manual scoring
-from ragas.metrics.collections import (
-    Faithfulness,
-    AnswerRelevancy,
-    ContextPrecision,
-    ContextRecall,
-    NoiseSensitivity
-)
+from rag_adapter import PaperSenseRAGAdapter  # noqa: E402
+from ragas.metrics.collections import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness  # noqa: E402
 
-from rag_adapter import PaperSenseRAGAdapter
+from config import settings  # noqa: E402
+from judge import JUDGES, Judge, LocalEmbeddings  # noqa: E402
+from pacing import QuotaExhausted  # noqa: E402
+from services.llm import ProviderError  # noqa: E402
+from services.logging_setup import setup_logging  # noqa: E402
 
-# Initialize Async OpenAI Client for Ragas Scorers
-client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+DATASET = HERE / "evals" / "datasets" / "eval_dataset.csv"
+PAPER = HERE / "evals" / "datasets" / "test_paper.pdf"
+OUT = HERE / "evals" / "experiments"
+STATE = OUT / "v2_run_state.json"
+V1_RESULTS = OUT / "v1_results.csv"
+V1_MODES = {"Dense Search": "dense", "Hybrid Search": "hybrid"}
 
-# Setup LLM and Embeddings specifically for the metrics
-llm = llm_factory("gpt-4o", client=client)
-embeddings = embedding_factory("openai","text-embedding-3-small", client=client)
+MODES = ("dense", "hybrid")
+METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
+LABELS = ("faith", "relev", "prec", "recall")
+TIMES = ("retrieval_seconds", "generation_seconds", "answer_seconds", "judge_seconds")
+INGESTION_FIELDS = ("paper", "pages", "chunks", "tables", "figures", "figures_described", "formulas",
+                    "formulas_decoded", "formulas_read", "coverage", "low_coverage_pages", "ocr_used",
+                    "parse_seconds", "ingest_seconds")
+FATAL_KINDS = ("invalid_key", "missing_key", "bad_request")
 
-# Instantiate the individual metric scorers
-faithfulness_scorer = Faithfulness(llm=llm)
-relevancy_scorer = AnswerRelevancy(llm=llm, embeddings=embeddings)
-precision_scorer = ContextPrecision(llm=llm, embeddings=embeddings)
-recall_scorer = ContextRecall(llm=llm, embeddings=embeddings)
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
+    parser.add_argument("--categories", nargs="+", help="only these question categories (text, formula, table, figure)")
+    parser.add_argument("--limit", type=int, help="only the first N questions (quick check)")
+    parser.add_argument("--answer-model", default=os.environ.get("EVAL_ANSWER_MODEL", "gemini-3.5-flash-lite"))
+    parser.add_argument("--judge-provider", choices=list(JUDGES), default="gemini")
+    parser.add_argument("--judge-model", help="default: mistral-medium-latest / gemini-3.1-flash-lite")
+    parser.add_argument("--answer-rpm", type=int, default=8, help="answer requests per minute")
+    parser.add_argument("--judge-rpm", type=int, help="judge requests per minute (default: 30 Mistral, 12 Gemini)")
+    parser.add_argument("--fresh", action="store_true", help="ignore saved progress and start over")
+    parser.add_argument("--reingest", action="store_true", help="ingest the paper again")
+    args = parser.parse_args()
+    args.judge_model = args.judge_model or JUDGES[args.judge_provider]["model"]
+    args.judge_rpm = args.judge_rpm or JUDGES[args.judge_provider]["rpm"]
+    return args
 
 
-def load_dataset():
-    """Returns 10 specific Q&A pairs for 'Attention Is All You Need'."""
-    return [
-        {
-            "question": "What is the main architecture proposed in this paper?",
-            "ground_truth": "The Transformer, an architecture based entirely on attention mechanisms, dispensing with recurrence and convolutions."
-        },
-        {
-            "question": "What type of attention mechanism does the Transformer rely on?",
-            "ground_truth": "It relies on Multi-Head Attention, which consists of several parallel Scaled Dot-Product Attention layers."
-        },
-        {
-            "question": "What are the advantages of self-attention over recurrent layers according to the paper?",
-            "ground_truth": "Self-attention reduces the total computational complexity per layer, allows for more parallelizable computation, and shortens the path length between long-range dependencies."
-        },
-        {
-            "question": "What hardware was used to train the models?",
-            "ground_truth": "The models were trained on one machine with 8 NVIDIA P100 GPUs."
-        },
-        {
-            "question": "How does the Transformer architecture differ from previous dominant sequence models?",
-            "ground_truth": "The Transformer abandons complex recurrent and convolutional neural networks, relying entirely on attention mechanisms to draw global dependencies between input and output[cite: 5]."
-        },
-        {
-            "question": "What is self-attention?",
-            "ground_truth": "Self-attention, also called intra-attention, is a mechanism that relates different positions of a single sequence to compute a representation of that entire sequence[cite: 5]."
-        },
-        {
-            "question": "In general terms, how does an attention function work?",
-            "ground_truth": "An attention function maps a query and a set of key-value pairs to an output, which is calculated as a weighted sum of the values[cite: 5]."
-        },
-        {
-            "question": "What are the two sub-layers present in each layer of the encoder?",
-            "ground_truth": "The first sub-layer is a multi-head self-attention mechanism, and the second is a simple, position-wise fully connected feed-forward network[cite: 5]."
-        },
-        {
-            "question": "What structural components immediately follow each sub-layer in the encoder and decoder?",
-            "ground_truth": "Each sub-layer is wrapped with a residual connection and is immediately followed by layer normalization[cite: 5]."
-        },
-        {
-            "question": "What additional sub-layer is inserted into the decoder that is not present in the encoder?",
-            "ground_truth": "The decoder contains a third sub-layer that performs multi-head attention over the output of the encoder stack[cite: 5]."
-        },
-        {
-            "question": "Why did the authors choose to use sinusoidal functions for positional encodings rather than learned embeddings?",
-            "ground_truth": "They hypothesized that sinusoidal functions would allow the model to easily learn to attend by relative positions and help the model extrapolate to sequence lengths longer than those encountered during training[cite: 5]."
-        },
-        {
-            "question": "What type of encoding was used to prepare the sentences in the English-German translation dataset?",
-            "ground_truth": "The sentences were encoded using byte-pair encoding with a shared source-target vocabulary[cite: 5]."
-        },
-        {
-            "question": "How did the authors organize the sentence pairs during the training process to handle different lengths?",
-            "ground_truth": "Sentence pairs were batched together based on their approximate sequence length[cite: 5]."
-        },
-        {
-            "question": "What specific regularization technique was used that makes the model more unsure of its predictions but ultimately improves accuracy and translation scores?",
-            "ground_truth": "The authors employed label smoothing during training[cite: 5]."
+def load_dataset(categories: list[str] | None, limit: int | None) -> list[dict]:
+    with DATASET.open(encoding="utf-8") as f:
+        rows = [r for r in csv.DictReader(f) if not categories or r["category"] in categories]
+    return rows[:limit] if limit else rows
+
+
+def load_state(fresh: bool) -> dict:
+    if STATE.exists() and not fresh:
+        return json.loads(STATE.read_text(encoding="utf-8"))
+    return {"ingestion": {}, "results": {}}
+
+
+def save_state(state: dict) -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(STATE)
+
+
+def prepare_paper(adapter: PaperSenseRAGAdapter, state: dict, reingest: bool) -> dict:
+    """The ingested test paper and its ingestion metrics (E3), ingesting it if needed."""
+    record = None if reingest else adapter.find_ready(PAPER.name)
+    if record is None:
+        adapter.remove(PAPER.name)
+        print(f"Ingesting {PAPER.name} (takes a few minutes)...")
+        record, seconds = adapter.ingest(PAPER)
+        state["ingestion"] = {"document_id": record["id"], "ingest_seconds": round(seconds, 1)}
+        save_state(state)
+    adapter.document = record
+    stats = record.get("stats") or {}
+    known = state["ingestion"].get("document_id") == record["id"]
+    return {
+        "paper": PAPER.name,
+        "pages": record.get("page_count"),
+        **{k: stats.get(k) for k in INGESTION_FIELDS if k in stats},
+        "low_coverage_pages": " ".join(map(str, stats.get("low_coverage_pages") or [])),
+        "ingest_seconds": state["ingestion"].get("ingest_seconds") if known else None,
+    }
+
+
+def build_metrics(judge: Judge, embeddings: LocalEmbeddings) -> dict:
+    return {
+        "faithfulness": Faithfulness(llm=judge),
+        "answer_relevancy": AnswerRelevancy(llm=judge, embeddings=embeddings),
+        "context_precision": ContextPrecision(llm=judge),
+        "context_recall": ContextRecall(llm=judge),
+    }
+
+
+async def score(metrics: dict, question: str, reference: str, answer: str, contexts: list[str]) -> tuple[dict, list[str]]:
+    """All four metrics for one answer, run side by side. A failed metric is left empty."""
+    jobs = {
+        "faithfulness": metrics["faithfulness"].ascore(user_input=question, response=answer, retrieved_contexts=contexts),
+        "answer_relevancy": metrics["answer_relevancy"].ascore(user_input=question, response=answer),
+        "context_precision": metrics["context_precision"].ascore(user_input=question, reference=reference,
+                                                                 retrieved_contexts=contexts),
+        "context_recall": metrics["context_recall"].ascore(user_input=question, retrieved_contexts=contexts,
+                                                           reference=reference),
+    }
+    outcomes = await asyncio.gather(*jobs.values(), return_exceptions=True)
+    scores, errors = {}, []
+    for name, outcome in zip(jobs, outcomes):
+        if isinstance(outcome, QuotaExhausted):
+            raise outcome
+        if isinstance(outcome, ProviderError) and outcome.kind in FATAL_KINDS:
+            raise outcome
+        if isinstance(outcome, Exception):
+            scores[name] = None
+            errors.append(f"{name}: {type(outcome).__name__}: {str(outcome)[:200]}")
+            continue
+        value = float(getattr(outcome, "value", outcome))
+        scores[name] = None if math.isnan(value) else round(value, 4)
+    return scores, errors
+
+
+def answer_is_current(entry: dict | None, row: dict, args: argparse.Namespace, document_id: str) -> bool:
+    """A saved answer counts only if the question, the answer model and the ingested paper are unchanged."""
+    return bool(entry) and all((
+        entry["question"] == row["question"],
+        entry["answer_model"] == args.answer_model,
+        entry["document_id"] == document_id,
+    ))
+
+
+def scores_are_current(entry: dict, row: dict, args: argparse.Namespace) -> bool:
+    """Saved scores count only if the reference answer and the judge are unchanged."""
+    return entry["ground_truth"] == row["ground_truth"] and entry["judge_model"] == args.judge_model
+
+
+def is_current(entry: dict | None, row: dict, args: argparse.Namespace, document_id: str) -> bool:
+    return answer_is_current(entry, row, args, document_id) and scores_are_current(entry, row, args)
+
+
+def run_question(adapter, metrics, state: dict, row: dict, mode: str, args) -> dict:
+    """Answer and score one question, saving after each step so a stop loses little work.
+
+    A saved answer whose scores are out of date (new judge or reference answer) is only re-scored.
+    """
+    key = f"{mode}|{row['id']}"
+    entry = state["results"].get(key)
+    if answer_is_current(entry, row, args, adapter.document["id"]) and not scores_are_current(entry, row, args):
+        entry.update({m: None for m in METRICS}, ground_truth=row["ground_truth"],
+                     judge_model=args.judge_model, judge_seconds=None, errors=[])
+    if not answer_is_current(entry, row, args, adapter.document["id"]):
+        answer = adapter.query(row["question"], use_hybrid=mode == "hybrid")
+        entry = {
+            "id": row["id"], "category": row["category"], "mode": mode,
+            "question": row["question"], "ground_truth": row["ground_truth"],
+            "answer_model": args.answer_model, "judge_model": args.judge_model,
+            "document_id": adapter.document["id"],
+            "answer": answer.text, "contexts": answer.contexts,
+            "retrieval_seconds": round(answer.retrieval_seconds, 3),
+            "generation_seconds": round(answer.generation_seconds, 3),
+            "answer_seconds": round(answer.seconds, 3),
+            **{m: None for m in METRICS}, "judge_seconds": None, "errors": [],
         }
-
-    ]
-
-
-def extract_value(result):
-    """Helper to safely extract the numerical value from the Ragas Result object"""
-    return getattr(result, "value", result)
-
-
-async def run_evaluation_mode(adapter, raw_data, use_hybrid: bool, mode_name: str):
-    """Runs the RAG pipeline and scores it concurrently question-by-question."""
-    print(f"\n==============================================")
-    print(f"RUNNING EVALUATION MODE: {mode_name}")
-    print(f"==============================================")
-
-    results_list = []
-
-    for row in raw_data:
-        question = row["question"]
-        reference = row["ground_truth"]
-        print(f"\nAsking: {question}")
-
-        # 1. Gather response from the RAG Pipeline (Synchronous execution)
-        response = adapter.query(question, use_hybrid=use_hybrid)
-        ans = response.get("answer", "")
-        contexts = response.get("contexts", [])
-
-        print("  -> Scoring with Ragas...")
-
-        # 2. Score concurrently across all metrics for this single question
-        # Faithfulness and Relevancy only need inputs/response/contexts
-        task_f = faithfulness_scorer.ascore(
-            user_input=question,
-            response=ans,
-            retrieved_contexts=contexts
-        )
-        task_r = relevancy_scorer.ascore(
-            user_input=question,
-            response=ans
-        )
-        # Precision and Recall also require the ground truth reference
-        task_p = precision_scorer.ascore(
-            user_input=question,
-            retrieved_contexts=contexts,
-            reference=reference
-        )
-        task_c = recall_scorer.ascore(
-            user_input=question,
-            retrieved_contexts=contexts,
-            reference=reference
-        )
-
-        # Run the metric evaluations concurrently
-        f_res, r_res, p_res, c_res = await asyncio.gather(task_f, task_r, task_p, task_c)
-
-        # Ragas 0.3+ returns a custom result object for `.ascore`, we extract `.value`
-        f_score = extract_value(f_res)
-        r_score = extract_value(r_res)
-        p_score = extract_value(p_res)
-        c_score = extract_value(c_res)
-
-        print(f"  -> Faithfulness: {f_score} | Relevancy: {r_score} | Precision: {p_score} | Recall: {c_score}")
-
-        results_list.append({
-            "question": question,
-            "answer": ans,
-            "ground_truth": reference,
-            "faithfulness": f_score,
-            "answer_relevancy": r_score,
-            "context_precision": p_score,
-            "context_recall": c_score,
-            "search_mode": mode_name
-        })
-
-    return pd.DataFrame(results_list)
+        state["results"][key] = entry
+        save_state(state)
+    if any(entry[m] is None for m in METRICS):
+        start = time.perf_counter()
+        scores, errors = asyncio.run(score(metrics, row["question"], row["ground_truth"],
+                                           entry["answer"], entry["contexts"]))
+        entry.update(scores, errors=errors, judge_seconds=round(time.perf_counter() - start, 1))
+        save_state(state)
+    return entry
 
 
-async def main():
-    print("Initializing PaperSense RAG Adapter...")
-    adapter = PaperSenseRAGAdapter()
+def avg(values) -> float | None:
+    values = [v for v in values if v is not None]
+    return round(mean(values), 4) if values else None
 
-    test_paper_path = Path(__file__).parent / "evals" /"datasets" / "test_paper.pdf"
 
-    if not test_paper_path.exists():
-        print(f"Error: Test paper not found at {test_paper_path}")
-        print("Please download 'Attention Is All You Need' and save it as 'test_paper.pdf'.")
+def summarize(entries: list[dict], modes: list[str]) -> list[dict]:
+    """Averages per mode, overall and per question category, with the run time of each group."""
+    rows = []
+    for mode in modes:
+        in_mode = [e for e in entries if e["mode"] == mode]
+        groups = [("all", in_mode)] + [(c, [e for e in in_mode if e["category"] == c])
+                                       for c in dict.fromkeys(e["category"] for e in in_mode)]
+        for category, group in groups:
+            if not group:
+                continue
+            answer_total = sum(e["answer_seconds"] or 0 for e in group)
+            judge_total = sum(e["judge_seconds"] or 0 for e in group)
+            rows.append({
+                "mode": mode, "category": category, "questions": len(group),
+                **{m: avg(e[m] for e in group) for m in METRICS},
+                "avg_retrieval_seconds": avg(e["retrieval_seconds"] for e in group),
+                "avg_generation_seconds": avg(e["generation_seconds"] for e in group),
+                "avg_answer_seconds": avg(e["answer_seconds"] for e in group),
+                "avg_judge_seconds": avg(e["judge_seconds"] for e in group),
+                "total_answer_seconds": round(answer_total, 1),
+                "total_judge_seconds": round(judge_total, 1),
+                "total_run_seconds": round(answer_total + judge_total, 1),
+                "answer_model": group[0]["answer_model"], "judge_model": group[0]["judge_model"],
+            })
+    return rows
+
+
+def compare_with_v1(entries: list[dict]) -> list[dict]:
+    """v1 vs v2 averages on the questions both runs share (the original ten)."""
+    if not V1_RESULTS.exists():
+        return []
+    with V1_RESULTS.open(encoding="utf-8") as f:
+        v1 = [r for r in csv.DictReader(f) if r["search_mode"] in V1_MODES]
+    shared = {r["question"] for r in v1} & {e["question"] for e in entries}
+    rows = []
+    for v1_mode, mode in V1_MODES.items():
+        old = [r for r in v1 if r["search_mode"] == v1_mode and r["question"] in shared]
+        new = [e for e in entries if e["mode"] == mode and e["question"] in shared]
+        if not old or not new:
+            continue
+        for metric in METRICS:
+            before = avg(float(r[metric]) if r[metric] not in ("", "nan") else None for r in old)
+            after = avg(e[metric] for e in new)
+            change = round(after - before, 4) if before is not None and after is not None else None
+            rows.append({"mode": mode, "metric": metric, "questions": len(new),
+                         "v1": before, "v2": after, "change": change})
+    return rows
+
+
+def write_csv(path: Path, rows: list[dict]) -> None:
+    if not rows:
         return
+    with path.open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
 
-    print(f"\nIngesting {test_paper_path.name} into vector store...")
-    adapter.ingest_test_paper(str(test_paper_path))
 
-    raw_data = load_dataset()
+def write_outputs(entries: list[dict], ingestion: dict, modes: list[str]) -> tuple[list[dict], list[dict]]:
+    """v2_results.csv (one row per question and mode), v2_summary.csv, v2_ingestion.csv, v1_vs_v2.csv."""
+    columns = ("id", "category", "mode", "question", "ground_truth", "answer", *METRICS, *TIMES)
+    results = [{**{c: e.get(c) for c in columns}, "contexts": len(e["contexts"]),
+                "errors": " | ".join(e["errors"])} for e in entries]
+    summary = summarize(entries, modes)
+    comparison = compare_with_v1(entries)
+    write_csv(OUT / "v2_results.csv", results)
+    write_csv(OUT / "v2_summary.csv", summary)
+    write_csv(OUT / "v2_ingestion.csv", [ingestion])
+    write_csv(OUT / "v1_vs_v2.csv", comparison)
+    return summary, comparison
 
-    # Run Both Modes using asyncio
-    df_dense = await run_evaluation_mode(adapter, raw_data, use_hybrid=False, mode_name="Dense Search")
-    df_hybrid = await run_evaluation_mode(adapter, raw_data, use_hybrid=True, mode_name="Hybrid Search")
 
-    # Combine and save results
-    final_df = pd.concat([df_dense, df_hybrid], ignore_index=True)
+def fmt(value) -> str:
+    return "  -  " if value is None else f"{value:.3f}"
 
-    results_dir = Path(__file__).parent /"evals" / "experiments"
-    results_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = results_dir / "comparison_eval_results.csv"
-    final_df.to_csv(csv_path, index=False)
+def print_report(ingestion: dict, summary: list[dict], comparison: list[dict]) -> None:
+    print("\n--- Ingestion ---")
+    for key, value in ingestion.items():
+        print(f"  {key:<20} {value}")
+    print("\n--- Results ---")
+    print(f"  {'mode':<7} {'category':<8} {'n':>3}  {'faith':>6} {'relev':>6} {'prec':>6} {'recall':>6}"
+          f"  {'retr s':>6} {'gen s':>6} {'run s':>7}")
+    for r in summary:
+        print(f"  {r['mode']:<7} {r['category']:<8} {r['questions']:>3}  "
+              + " ".join(f"{fmt(r[m]):>6}" for m in METRICS)
+              + f"  {fmt(r['avg_retrieval_seconds']):>6} {fmt(r['avg_generation_seconds']):>6}"
+              f" {r['total_run_seconds']:>7.0f}")
+    if comparison:
+        print("\n--- v1 vs v2 (the original ten questions) ---")
+        for r in comparison:
+            print(f"  {r['mode']:<7} {r['metric']:<18} v1 {fmt(r['v1'])}  v2 {fmt(r['v2'])}  change {fmt(r['change'])}")
 
-    print(f"\n✅ Experiment complete! Comparison results saved to: {csv_path.resolve()}")
 
-    # Print a quick summary of averages
-    print("\n--- Summary Averages ---")
-    summary = final_df.groupby("search_mode").mean(numeric_only=True)
-    print(summary)
+def main() -> None:
+    args = parse_args()
+    setup_logging()
+    key = (settings.server_gemini_api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not key:
+        sys.exit("Set SERVER_GEMINI_API_KEY in backend/.env (or GEMINI_API_KEY) to run the evaluation.")
+
+    rows = load_dataset(args.categories, args.limit)
+    state = load_state(args.fresh)
+    adapter = PaperSenseRAGAdapter(key, args.answer_model, args.answer_rpm)
+    ingestion = prepare_paper(adapter, state, args.reingest)
+    adapter.warm_up()
+    judge_key = (settings.mistral_api_key or "").strip() if args.judge_provider == "mistral" else key
+    if not judge_key:
+        sys.exit("Set MISTRAL_API_KEY in backend/.env to use the Mistral judge.")
+    judge = Judge(args.judge_provider, judge_key, args.judge_model, args.judge_rpm)
+    metrics = build_metrics(judge, LocalEmbeddings(adapter.embedder))
+
+    print(f"{len(rows)} questions x {len(args.modes)} modes | answers: {args.answer_model} | judge: {args.judge_model}")
+    started, stopped = time.perf_counter(), None
+    try:
+        for mode in args.modes:
+            for n, row in enumerate(rows, start=1):
+                entry = run_question(adapter, metrics, state, row, mode, args)
+                print(f"[{mode} {n}/{len(rows)}] {row['id']} "
+                      + " ".join(f"{label}={fmt(entry[m])}" for label, m in zip(LABELS, METRICS))
+                      + f" | answer {entry['answer_seconds']:.1f}s, judge {entry['judge_seconds'] or 0:.0f}s"
+                      + (f" | {len(entry['errors'])} metric error(s)" if entry["errors"] else ""))
+    except QuotaExhausted as err:
+        stopped = str(err)
+
+    by_id = {row["id"]: row for row in rows}
+    order = [f"{mode}|{row['id']}" for mode in args.modes for row in rows]
+    entries = [state["results"][k] for k in order if k in state["results"]
+               and is_current(state["results"][k], by_id[k.split("|", 1)[1]], args, adapter.document["id"])]
+    summary, comparison = write_outputs(entries, ingestion, args.modes)
+    print_report(ingestion, summary, comparison)
+    print(f"\nThis run took {time.perf_counter() - started:.0f}s, {judge.requests} judge request(s). "
+          f"Results: {OUT}")
+    if stopped:
+        print(f"\nStopped early: {stopped}. Run the same command again after the quota resets "
+              "(midnight Pacific time) to continue.")
 
 
 if __name__ == "__main__":
-    # Standard entry point for asyncio python scripts
-    asyncio.run(main())
+    main()
