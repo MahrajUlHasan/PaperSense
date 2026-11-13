@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { AnalysisDialog } from "@/components/library/AnalysisDialog";
 import { LibraryPanel } from "@/components/library/LibraryPanel";
+import { UploadDropzone } from "@/components/library/UploadDropzone";
 import { ResearchPanel } from "@/components/research/ResearchPanel";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -48,7 +49,7 @@ export default function AppShell() {
   return (
     <div className="flex h-dvh flex-col">
       <AppHeader isLarge={isLarge} isWide={isWide} />
-      <div className="flex min-h-0 flex-1">
+      <UploadDropzone>
         {isLarge && libraryOpen && (
           <aside aria-label="Library" className="bg-shelf flex w-80 shrink-0 flex-col border-r">
             <LibraryPanel />
@@ -62,7 +63,7 @@ export default function AppShell() {
             <ResearchPanel />
           </aside>
         )}
-      </div>
+      </UploadDropzone>
 
       <Sheet open={mobilePanel !== null} onOpenChange={(open) => !open && setMobilePanel(null)}>
         <SheetContent side={mobilePanel === "research" ? "right" : "left"} className="bg-shelf flex w-[min(22rem,90vw)] flex-col gap-0 p-0">
