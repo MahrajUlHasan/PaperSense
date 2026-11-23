@@ -1,0 +1,12 @@
+.venv
+rag_eval/.venv
+**/__pycache__
+.pytest_cache
+data
+logs
+Scripts
+scripts
+.env
+.env.*
+!.env.example
+*.pdf

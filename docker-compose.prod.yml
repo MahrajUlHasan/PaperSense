@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      ALLOW_SERVER_KEY: "false"
+      DEBUG: "false"
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+      - model-cache:/models
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-logs:
+  model-cache:
+  caddy-data:
+  caddy-config:
