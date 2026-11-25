@@ -6,6 +6,9 @@ Uploads a paper into a throwaway workspace, waits until it is processed, then ch
 an answer with citations and page boxes, the PDF and figure endpoints and workspace isolation,
 and finally deletes the paper again. The Gemini key is read from PAPERSENSE_GEMINI_KEY; without
 it the server's own key is used (ALLOW_SERVER_KEY=true). The key is never printed.
+
+Idle connections are dropped after 1 second: uvicorn closes them after 5, the same as the polling
+interval, and reusing one the server has just closed fails with a ReadError.
 """
 from __future__ import annotations
 
@@ -45,7 +48,8 @@ def main() -> int:
     if key:
         headers["X-LLM-Key"] = key
     check = Checks()
-    client = httpx.Client(base_url=args.api, headers=headers, timeout=120)
+    client = httpx.Client(base_url=args.api, headers=headers, timeout=120,
+                          limits=httpx.Limits(keepalive_expiry=1.0))
 
     try:
         health = client.get("/health").json()
